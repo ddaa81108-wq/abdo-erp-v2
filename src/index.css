@@ -1,0 +1,149 @@
+@import "tailwindcss";
+
+/* 👑 premium custom themes (التنسيق والبرستيج الملكي والماسي) */
+
+/* 1. Midnight Dark Theme (المظهر الداكن الكوني الفاخر) */
+.theme-dark {
+  background-color: #0b0f19 !important; /* Extremely dark elegant slate */
+  color: #f1f5f9 !important;
+}
+
+.theme-dark header {
+  background-color: #0f172a !important;
+  border-bottom: 2px solid #1e293b !important;
+}
+
+/* Override card backgrounds and borders */
+.theme-dark .bg-white, 
+.theme-dark .bg-slate-50,
+.theme-dark .bg-slate-100 {
+  background-color: #111827 !important; /* Deeper grey-slate dark */
+  color: #f3f4f6 !important;
+}
+
+.theme-dark .border-slate-200, 
+.theme-dark .border-slate-100,
+.theme-dark .border-gray-200,
+.theme-dark .border-indigo-100,
+.theme-dark .border-purple-100 {
+  border-color: #1f2937 !important;
+}
+
+.theme-dark .divide-slate-200,
+.theme-dark .divide-slate-100 {
+  border-color: #1f2937 !important;
+}
+
+.theme-dark select,
+.theme-dark input,
+.theme-dark textarea {
+  background-color: #1f2937 !important;
+  color: #ffffff !important;
+  border-color: #374151 !important;
+}
+
+.theme-dark .text-slate-900,
+.theme-dark .text-slate-800,
+.theme-dark .text-slate-700,
+.theme-dark .text-slate-600 {
+  color: #e5e7eb !important;
+}
+
+.theme-dark .text-slate-500,
+.theme-dark .text-slate-400,
+.theme-dark .text-slate-450 {
+  color: #9ca3af !important;
+}
+
+.theme-dark h1, .theme-dark h2, .theme-dark h3, .theme-dark h4, .theme-dark h5, .theme-dark h6 {
+  color: #f9fafb !important;
+}
+
+.theme-dark table th {
+  background-color: #1f2937 !important;
+  color: #f9fafb !important;
+}
+
+.theme-dark table td {
+  border-bottom-color: #1f2937 !important;
+}
+
+
+/* 2. Royal Golden Theme (المظهر الملكي المذهب) */
+.theme-golden {
+  background-color: #0d0c0a !important; /* Rich obsidian gold */
+  color: #f7e9cc !important;
+}
+
+.theme-golden header {
+  background-color: #181511 !important;
+  border-bottom: 2px solid #d4af37 !important; /* Real gold accent */
+}
+
+/* Force dark golden cards */
+.theme-golden .bg-white,
+.theme-golden .bg-slate-50,
+.theme-golden .bg-slate-100 {
+  background-color: #191612 !important; /* Rich deep copper-gold */
+  color: #fcefd6 !important;
+}
+
+/* Metallic Gold Borders */
+.theme-golden .border-slate-200,
+.theme-golden .border-slate-100,
+.theme-golden .border-gray-200,
+.theme-golden .border-indigo-100,
+.theme-golden .border-purple-100 {
+  border-color: #3d3425 !important;
+}
+
+.theme-golden .divide-slate-200,
+.theme-golden .divide-slate-100 {
+  border-color: #3d3425 !important;
+}
+
+.theme-golden select,
+.theme-golden input,
+.theme-golden textarea {
+  background-color: #241f19 !important;
+  color: #fcefd6 !important;
+  border-color: #d4af37 !important; /* Gold control borders */
+}
+
+.theme-golden .text-slate-900,
+.theme-golden .text-slate-800,
+.theme-golden .text-slate-700,
+.theme-golden .text-slate-650,
+.theme-golden .text-slate-600 {
+  color: #f3e5c8 !important;
+}
+
+.theme-golden .text-slate-500,
+.theme-golden .text-slate-400,
+.theme-golden .text-slate-450 {
+  color: #c4af87 !important;
+}
+
+.theme-golden h1, .theme-golden h2, .theme-golden h3, .theme-golden h4, .theme-golden h5, .theme-golden h6 {
+  color: #fdf6e2 !important;
+  text-shadow: 0 0 1px rgba(212, 175, 55, 0.2);
+}
+
+.theme-golden table th {
+  background-color: #24201a !important;
+  color: #d4af37 !important; /* Golden headers */
+}
+
+.theme-golden table td {
+  border-bottom-color: #312b21 !important;
+}
+
+.theme-golden select option {
+  background-color: #191612 !important;
+  color: #fcefd6 !important;
+}
+
+/* Dynamic side borders custom sizing on cards with .border-r-4 */
+.border-r-4 {
+  border-right-width: 4px !important;
+}
