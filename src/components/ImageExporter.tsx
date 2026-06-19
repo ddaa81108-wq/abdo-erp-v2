@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { jsPDF } from 'jspdf';
 import { toPng } from 'html-to-image';
 import { Camera, Image, Copy, Download, Share2, Eye, Sliders, Smartphone, Laptop, Check, AlertCircle, FileText } from 'lucide-react';
 import { Customer, CustomerCycle, DebtTransaction, Company, CompanyTransaction, PurchaseRecord, TrustDeposit } from '../types';
@@ -75,60 +76,77 @@ export default function ImageExporter({
     link.click();
   };
 
-  // 2. Print directly as a PDF via an HD image-to-PDF print context
   const handlePrintPdf = async () => {
-    const url = await generateCardImage();
-    if (!url) return;
-
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      setErrorMessage('الرجاء السماح للنوافذ المنبثقة من متصفحك لتوليد مستند الـ PDF الفوري!');
-      return;
+    // Open a popup window immediately to bypass popup blockers
+    const popupWin = window.open('', '_blank');
+    if (popupWin) {
+      popupWin.document.write('<body><h2 style="text-align:center; font-family:sans-serif; margin-top: 50px;">جاري تجهيز مستند الـ PDF الملكي... الرجاء الانتظار</h2></body>');
     }
 
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html dir="rtl">
-      <head>
-        <title>تصدير مستند PDF ملكي فوري</title>
-        <style>
-          @page {
-            size: ${layoutMode === 'portrait' ? 'A4 portrait' : 'A4 landscape'};
-            margin: 0;
-          }
-          body {
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            background-color: #ffffff;
-          }
-          .pdf-image-container {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            box-sizing: border-box;
-            padding: 20px;
-          }
-          img {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="pdf-image-container">
-          <img src="${url}" alt="Report" onload="window.focus(); setTimeout(function() { window.print(); window.close(); }, 500);" />
-        </div>
-      </body>
-      </html>
-    `);
-    printWindow.document.close();
+    try {
+      const el = cardRef.current;
+      if (!el) {
+        if (popupWin) popupWin.close();
+        return;
+      }
+
+      const dataUrl = await toPng(el, {
+        quality: 1.0,
+        pixelRatio: 2,
+        backgroundColor: '#FFFFFF',
+        style: {
+          transform: 'none',
+          transformOrigin: 'top left'
+        }
+      });
+      
+      const pdfPattern = layoutMode === 'portrait' ? 'portrait' : 'landscape';
+      
+      const pdf = new jsPDF({
+        orientation: pdfPattern,
+        unit: 'pt',
+        format: 'a4'
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      
+      const elWidth = el.offsetWidth || 1200;
+      const elHeight = el.offsetHeight || 1600;
+
+      const finalW = pdfWidth;
+      const finalH = (pdfWidth * elHeight) / elWidth;
+
+      let heightLeft = finalH;
+      let position = 0;
+
+      pdf.addImage(dataUrl, 'PNG', 0, position, finalW, finalH);
+      heightLeft -= pdfHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - finalH;
+        pdf.addPage();
+        pdf.addImage(dataUrl, 'PNG', 0, position, finalW, finalH);
+        heightLeft -= pdfHeight;
+      }
+
+      pdf.autoPrint();
+      const blob = pdf.output('blob');
+      const blobUrl = URL.createObjectURL(blob);
+      
+      if (popupWin) {
+        popupWin.location.href = blobUrl;
+      } else {
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.target = '_blank';
+        a.click();
+      }
+    } catch (err) {
+      console.error(err);
+      if (popupWin) popupWin.close();
+      setErrorMessage('حدث خطأ أثناء التصدير للـ PDF.');
+    }
   };
 
   // 3. Clipboard integration: Write image blob directly

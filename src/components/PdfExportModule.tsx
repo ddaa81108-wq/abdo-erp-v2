@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { FileText, Printer, CheckCircle, Shield, Award, Sparkles, MapPin, Calendar, Clock } from 'lucide-react';
+import { jsPDF } from 'jspdf';
+import { toPng } from 'html-to-image';
+import { FileText, Printer, CheckCircle, Shield, Award, Sparkles, MapPin, Calendar, Clock, Loader2 } from 'lucide-react';
 import { ERPState } from '../types';
 
 interface PdfExportModuleProps {
@@ -11,188 +13,315 @@ export default function PdfExportModule({ state }: PdfExportModuleProps) {
   const [stampColor, setStampColor] = useState<string>('blue');
   const [showWatermark, setShowWatermark] = useState<boolean>(true);
   const [customHeaderTitle, setCustomHeaderTitle] = useState<string>('الشركة الملكية لإدارة الحسابات والاستثمار م.م');
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
-  const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('الرجاء السماح للنوافذ المنبثقة من متصفحك لتوليد تقارير PDF!');
-      return;
+  const handlePrint = async () => {
+    if (generatingPdf) return;
+    setGeneratingPdf(true);
+    
+    // Open a popup window immediately to bypass popup blockers
+    const popupWin = window.open('', '_blank');
+    if (popupWin) {
+      popupWin.document.write('<body><h2 style="text-align:center; font-family:sans-serif; margin-top: 50px;">جاري تجهيز مستند الـ PDF الملكي... الرجاء الانتظار</h2></body>');
     }
-
-    let reportTitle = '';
-    let tableHeaders: string[] = [];
-    let tableRowsHtml = '';
-    let summaryHtml = '';
-
+    
     const currentDate = new Date().toLocaleDateString('ar-LY', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     const currentTime = new Date().toLocaleTimeString('ar-LY', { hour: '2-digit', minute: '2-digit' });
 
-    if (selectedReport === 'customers') {
-      reportTitle = 'تقرير ومذكرة كشف حساب ديون العملاء والزبائن';
-      tableHeaders = ['م', 'اسم العميل / الجهة', 'رقم الهاتف', 'الحالة الحالية', 'إجمالي الدين المترصد'];
-      
-      const activeCustomers = state.customers.filter(c => !c.isDeleted);
-      let totalAmount = 0;
+    const getReportContent = (type: string) => {
+      let reportTitle = '';
+      let tableHeaders: string[] = [];
+      let tableRowsHtml = '';
+      let summaryHtml = '';
 
-      tableRowsHtml = activeCustomers.map((c, idx) => {
-        const cycle = state.cycles.find(cy => cy.customerId === c.id && cy.status === 'active');
-        const balance = cycle ? cycle.currentBalance : 0;
-        totalAmount += balance;
-        return `
-          <tr>
-            <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
-            <td style="font-weight: bold; color: #1e293b;">${c.name}</td>
-            <td style="text-align: center;">${c.phone || 'غير مسجل'}</td>
-            <td style="text-align: center; color: ${balance > 0 ? '#b91c1c' : '#15803d'}">${balance > 0 ? 'مفتوح (ذمم)' : 'مسدد ✓'}</td>
-            <td style="text-align: left; font-family: monospace; font-weight: 900; background-color: #fafaf9; color: ${balance > 0 ? '#b91c1c' : '#15803d'}">${balance.toLocaleString()} د.ل</td>
-          </tr>
-        `;
-      }).join('');
+      if (type === 'customers') {
+        reportTitle = 'تقرير ومذكرة كشف حساب ديون العملاء والزبائن';
+        tableHeaders = ['م', 'اسم العميل / الجهة', 'رقم الهاتف', 'الحالة الحالية', 'إجمالي الدين المترصد'];
+        
+        const activeCustomers = state.customers.filter(c => !c.isDeleted);
+        let totalAmount = 0;
 
-      summaryHtml = `
-        <div style="margin-top: 25px; padding: 15px; border: 2px solid #334155; border-radius: 8px; background-color: #f8fafc; display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 14px; font-weight: bold; color: #334155;">إجمالي ديون الزبائن النشطة بالمنظومة:</span>
-          <span style="font-size: 20px; font-weight: 900; color: #b91c1c; font-family: monospace;">${totalAmount.toLocaleString()} دينار ليبي</span>
-        </div>
-      `;
+        tableRowsHtml = activeCustomers.map((c, idx) => {
+          const cycle = state.cycles.find(cy => cy.customerId === c.id && cy.status === 'active');
+          const balance = cycle ? cycle.currentBalance : 0;
+          totalAmount += balance;
+          return `
+            <tr>
+              <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
+              <td style="font-weight: bold; color: #1e293b;">${c.name}</td>
+              <td style="text-align: center;">${c.phone || 'غير مسجل'}</td>
+              <td style="text-align: center; color: ${balance > 0 ? '#b91c1c' : '#15803d'}">${balance > 0 ? 'مفتوح (ذمم)' : 'مسدد ✓'}</td>
+              <td style="text-align: left; font-family: monospace; font-weight: 900; background-color: #fafaf9; color: ${balance > 0 ? '#b91c1c' : '#15803d'}">${(balance || 0).toLocaleString()} د.ل</td>
+            </tr>
+          `;
+        }).join('');
 
-    } else if (selectedReport === 'merchants') {
-      reportTitle = 'كشف ديون وحسابات في دفتر كبار التجار المستحقين';
-      tableHeaders = ['م', 'التاجر المعتمد', 'رقم الهاتف', 'الدين السابق', 'المسدد اليوم', 'صافي الرصيد الحالي'];
-      
-      const activeMerchants = state.merchants.filter(m => !m.isDeleted);
-      let totalAmount = 0;
-
-      tableRowsHtml = activeMerchants.map((m, idx) => {
-        totalAmount += m.balance;
-        return `
-          <tr>
-            <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
-            <td style="font-weight: bold; color: #1e293b;">${m.name}</td>
-            <td style="text-align: center;">${m.contact || 'غير مسجل'}</td>
-            <td style="text-align: center; font-family: monospace;">${(m.previousBalance || 0).toLocaleString()} د.ل</td>
-            <td style="text-align: center; font-family: monospace; color: #15803d;">${(m.paymentToday || 0).toLocaleString()} د.ل</td>
-            <td style="text-align: left; font-family: monospace; font-weight: 900; background-color: #fafaf9; color: ${m.balance > 0 ? '#7c3aed' : '#15803d'}">${m.balance.toLocaleString()} د.ل</td>
-          </tr>
-        `;
-      }).join('');
-
-      summaryHtml = `
-        <div style="margin-top: 25px; padding: 15px; border: 2px solid #7c3aed; border-radius: 8px; background-color: #f5f3ff; display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 14px; font-weight: bold; color: #7c3aed;">إجمالي الأرصدة المترصدة للتاجر:</span>
-          <span style="font-size: 20px; font-weight: 900; color: #7c3aed; font-family: monospace;">${totalAmount.toLocaleString()} دينار ليبي</span>
-        </div>
-      `;
-
-    } else if (selectedReport === 'companies') {
-      reportTitle = 'بيان الحسابات الإجمالية للشركات والموردين والجهات المجهزة';
-      tableHeaders = ['م', 'اسم المورد / الشركة', 'خط التواصل', 'قيمة سابقة', 'فواتير جديدة', 'المسدد اليوم', 'صافي الدين القائم'];
-      
-      const activeCompanies = state.companies.filter(c => !c.isDeleted);
-      let totalAmount = 0;
-
-      tableRowsHtml = activeCompanies.map((c, idx) => {
-        totalAmount += c.balance;
-        return `
-          <tr>
-            <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
-            <td style="font-weight: bold; color: #1e293b;">${c.name}</td>
-            <td style="text-align: center;">${c.contact || 'غير مسجل'}</td>
-            <td style="text-align: center; font-family: monospace;">${(c.previousBalance || 0).toLocaleString()} د.ل</td>
-            <td style="text-align: center; font-family: monospace; color: #b91c1c;">+${(c.newDebt || 0).toLocaleString()} د.ل</td>
-            <td style="text-align: center; font-family: monospace; color: #15803d;">-${(c.paymentToday || 0).toLocaleString()} د.ل</td>
-            <td style="text-align: left; font-family: monospace; font-weight: 900; background-color: #fafaf9; color: #b91c1c;">${c.balance.toLocaleString()} د.ل</td>
-          </tr>
-        `;
-      }).join('');
-
-      summaryHtml = `
-        <div style="margin-top: 25px; padding: 15px; border: 2px solid #b91c1c; border-radius: 8px; background-color: #fef2f2; display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 14px; font-weight: bold; color: #b91c1c;">إجمالي ديون الشركات المستحقة عليها:</span>
-          <span style="font-size: 20px; font-weight: 900; color: #b91c1c; font-family: monospace;">${totalAmount.toLocaleString()} دينار ليبي</span>
-        </div>
-      `;
-
-    } else if (selectedReport === 'deposits') {
-      reportTitle = 'كشف ذمم وحسابات الأمانات والودائع الجارية للزبائن';
-      tableHeaders = ['م', 'اسم المودع الأمانة', 'مرجع الإيداع', 'تاريخ الإيداع', 'رصيد د.ل ليبي', 'رصيد EGP مصري', 'حالة السند'];
-      
-      const activeDeposits = state.trustDeposits.filter(d => !d.isDeleted);
-      let totalLyd = 0;
-      let totalEgp = 0;
-
-      tableRowsHtml = activeDeposits.map((d, idx) => {
-        totalLyd += d.amountLyd;
-        totalEgp += d.amountEgp;
-        return `
-          <tr>
-            <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
-            <td style="font-weight: bold; color: #1e293b;">${d.customerName}</td>
-            <td style="text-align: center; font-family: monospace;">${d.referenceNo}</td>
-            <td style="text-align: center;">${new Date(d.date).toLocaleDateString('ar-LY')}</td>
-            <td style="text-align: center; font-family: monospace; font-weight: bold; color: #15803d;">${d.amountLyd.toLocaleString()} د.ل</td>
-            <td style="text-align: center; font-family: monospace; font-weight: bold; color: #d97706;">${d.amountEgp.toLocaleString()} ج.م</td>
-            <td style="text-align: center; color: ${d.status === 'held' ? '#cb5a07' : '#15803d'}">
-              ${d.status === 'held' ? 'قيد الاحتفاظ 🔒' : d.status === 'refunded' ? 'مسترجع كامل' : 'مقاصة الديون'}
-            </td>
-          </tr>
-        `;
-      }).join('');
-
-      summaryHtml = `
-        <div style="margin-top: 25px; padding: 15px; border: 2px solid #0284c7; border-radius: 8px; background-color: #f0f9ff; display: flex; flex-direction: column; gap: 8px;">
-          <div style="display: flex; justify-content: space-between;">
-            <span style="font-size: 13px; font-weight: bold; color: #0369a1;">إجمالي الودائع المحتفظ بها (بالدينار الليبي):</span>
-            <span style="font-size: 16px; font-weight: 900; color: #0369a1; font-family: monospace;">${totalLyd.toLocaleString()} د.ل</span>
+        summaryHtml = `
+          <div style="margin-top: 25px; padding: 15px; border: 2px solid #334155; border-radius: 8px; background-color: #f8fafc; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 14px; font-weight: bold; color: #334155;">إجمالي ديون الزبائن النشطة بالمنظومة:</span>
+            <span style="font-size: 20px; font-weight: 900; color: #b91c1c; font-family: monospace;">${totalAmount.toLocaleString()} دينار ليبي</span>
           </div>
-          <div style="display: flex; justify-content: space-between;">
-            <span style="font-size: 13px; font-weight: bold; color: #d97706;">إجمالي الودائع المحتفظ بها (بالجنيه المصري):</span>
-            <span style="font-size: 16px; font-weight: 900; color: #d97706; font-family: monospace;">${totalEgp.toLocaleString()} ج.م</span>
-          </div>
-        </div>
-      `;
-
-    } else {
-      reportTitle = 'تقرير قائمة كشف رصيد وحركة الخزنة المركزية';
-      tableHeaders = ['رقم', 'التاريخ', 'تفاصيل الحركة والقيد', 'المصدر الأساسي', 'نوع المعاملة', 'المبلغ المحصّل'];
-      
-      const txs = state.treasuryTransactions.slice(-25); // Last 25 entries for the report
-      let totalIn = 0;
-      let totalOut = 0;
-
-      tableRowsHtml = txs.map((t, idx) => {
-        if (t.type === 'in') totalIn += t.amount;
-        else totalOut += t.amount;
-        return `
-          <tr>
-            <td style="text-align: center; font-family: monospace;">${idx + 1}</td>
-            <td style="text-align: center; font-size: 11px;">${new Date(t.date).toLocaleDateString('ar-LY')}</td>
-            <td style="font-weight: bold; color: #1e293b;">${t.description}</td>
-            <td style="text-align: center; font-size: 11px; font-weight: bold;">${t.source === 'customer_payment' ? 'سداد عميل' : 'سداد شركات'}</td>
-            <td style="text-align: center; font-weight: bold; color: ${t.type === 'in' ? '#15803d' : '#b91c1c'};">${t.type === 'in' ? 'وارد للدرج 📥' : 'صادر وتخليص 📤'}</td>
-            <td style="text-align: left; font-family: monospace; font-weight: 900; color: ${t.type === 'in' ? '#15803d' : '#b91c1c'};">${t.amount.toLocaleString()} د.ل</td>
-          </tr>
         `;
-      }).join('');
+      } else if (type === 'merchants') {
+        reportTitle = 'كشف ديون وحسابات في دفتر كبار التجار المستحقين';
+        tableHeaders = ['م', 'التاجر المعتمد', 'رقم الهاتف', 'الدين السابق', 'المسدد اليوم', 'صافي الرصيد الحالي'];
+        
+        const activeMerchants = state.merchants.filter(m => !m.isDeleted);
+        let totalAmount = 0;
 
-      summaryHtml = `
-        <div style="margin-top: 25px; padding: 15px; border: 2px solid #059669; border-radius: 8px; background-color: #ecfdf5; display: flex; justify-content: space-between; align-items: center; gap: 20px;">
-          <div style="text-align: right;">
-            <div style="font-size: 12px; color: #047857; margin-bottom: 2px;">إجمالي الإيرادات المقيدة: <strong>${totalIn.toLocaleString()} د.ل</strong></div>
-            <div style="font-size: 12px; color: #b91c1c;">إجمالي المصروفات المقيدة: <strong>${totalOut.toLocaleString()} د.ل</strong></div>
+        tableRowsHtml = activeMerchants.map((m, idx) => {
+          totalAmount += m.balance;
+          return `
+            <tr>
+              <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
+              <td style="font-weight: bold; color: #1e293b;">${m.name}</td>
+              <td style="text-align: center;">${m.contact || 'غير مسجل'}</td>
+              <td style="text-align: center; font-family: monospace;">${(m.previousBalance || 0).toLocaleString()} د.ل</td>
+              <td style="text-align: center; font-family: monospace; color: #15803d;">${(m.paymentToday || 0).toLocaleString()} د.ل</td>
+              <td style="text-align: left; font-family: monospace; font-weight: 900; background-color: #fafaf9; color: ${m.balance > 0 ? '#7c3aed' : '#15803d'}">${(m.balance || 0).toLocaleString()} د.ل</td>
+            </tr>
+          `;
+        }).join('');
+
+        summaryHtml = `
+          <div style="margin-top: 25px; padding: 15px; border: 2px solid #7c3aed; border-radius: 8px; background-color: #f5f3ff; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 14px; font-weight: bold; color: #7c3aed;">إجمالي الأرصدة المترصدة للتاجر:</span>
+            <span style="font-size: 20px; font-weight: 900; color: #7c3aed; font-family: monospace;">${(totalAmount || 0).toLocaleString()} دينار ليبي</span>
           </div>
-          <div style="text-align: left; border-right: 2px solid #059669; padding-right: 15px;">
-            <span style="font-size: 12px; font-weight: bold; color: #1f2937; display: block;">رصيد التدقيق المتبقي:</span>
-            <span style="font-size: 20px; font-weight: 900; color: #059669; font-family: monospace;">${(totalIn - totalOut).toLocaleString()} د.ل</span>
+        `;
+      } else if (type === 'companies') {
+        reportTitle = 'بيان الحسابات الإجمالية للشركات والموردين والجهات المجهزة';
+        tableHeaders = ['م', 'اسم المورد / الشركة', 'خط التواصل', 'قيمة سابقة', 'فواتير جديدة', 'المسدد اليوم', 'صافي الدين القائم'];
+        
+        const activeCompanies = state.companies.filter(c => !c.isDeleted);
+        let totalAmount = 0;
+
+        tableRowsHtml = activeCompanies.map((c, idx) => {
+          totalAmount += c.balance;
+          return `
+            <tr>
+              <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
+              <td style="font-weight: bold; color: #1e293b;">${c.name}</td>
+              <td style="text-align: center;">${c.contact || 'غير مسجل'}</td>
+              <td style="text-align: center; font-family: monospace;">${(c.previousBalance || 0).toLocaleString()} د.ل</td>
+              <td style="text-align: center; font-family: monospace; color: #b91c1c;">+${(c.newDebt || 0).toLocaleString()} د.ل</td>
+              <td style="text-align: center; font-family: monospace; color: #15803d;">-${(c.paymentToday || 0).toLocaleString()} د.ل</td>
+              <td style="text-align: left; font-family: monospace; font-weight: 900; background-color: #fafaf9; color: #b91c1c;">${(c.balance || 0).toLocaleString()} د.ل</td>
+            </tr>
+          `;
+        }).join('');
+
+        summaryHtml = `
+          <div style="margin-top: 25px; padding: 15px; border: 2px solid #b91c1c; border-radius: 8px; background-color: #fef2f2; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 14px; font-weight: bold; color: #b91c1c;">إجمالي ديون الشركات المستحقة عليها:</span>
+            <span style="font-size: 20px; font-weight: 900; color: #b91c1c; font-family: monospace;">${totalAmount.toLocaleString()} دينار ليبي</span>
           </div>
-        </div>
+        `;
+      } else if (type === 'deposits') {
+        reportTitle = 'كشف ذمم وحسابات الأمانات والودائع الجارية للزبائن';
+        tableHeaders = ['م', 'اسم المودع الأمانة', 'مرجع الإيداع', 'تاريخ الإيداع', 'رصيد د.ل ليبي', 'رصيد EGP مصري', 'حالة السند'];
+        
+        const activeDeposits = state.trustDeposits.filter(d => !d.isDeleted);
+        let totalLyd = 0;
+        let totalEgp = 0;
+
+        tableRowsHtml = activeDeposits.map((d, idx) => {
+          totalLyd += d.amountLyd;
+          totalEgp += d.amountEgp;
+          return `
+            <tr>
+              <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
+              <td style="font-weight: bold; color: #1e293b;">${d.customerName}</td>
+              <td style="text-align: center; font-family: monospace;">${d.referenceNo}</td>
+              <td style="text-align: center;">${new Date(d.date).toLocaleDateString('ar-LY')}</td>
+              <td style="text-align: center; font-family: monospace; font-weight: bold; color: #15803d;">${(d.amountLyd || 0).toLocaleString()} د.ل</td>
+              <td style="text-align: center; font-family: monospace; font-weight: bold; color: #d97706;">${(d.amountEgp || 0).toLocaleString()} ج.م</td>
+              <td style="text-align: center; color: ${d.status === 'held' ? '#cb5a07' : '#15803d'}">
+                ${d.status === 'held' ? 'قيد الاحتفاظ 🔒' : d.status === 'refunded' ? 'مسترجع كامل' : 'مقاصة الديون'}
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        summaryHtml = `
+          <div style="margin-top: 25px; padding: 15px; border: 2px solid #0284c7; border-radius: 8px; background-color: #f0f9ff; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between;">
+              <span style="font-size: 13px; font-weight: bold; color: #0369a1;">إجمالي الودائع المحتفظ بها (بالدينار الليبي):</span>
+              <span style="font-size: 16px; font-weight: 900; color: #0369a1; font-family: monospace;">${(totalLyd || 0).toLocaleString()} د.ل</span>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="font-size: 13px; font-weight: bold; color: #d97706;">إجمالي الودائع المحتفظ بها (بالجنيه المصري):</span>
+              <span style="font-size: 16px; font-weight: 900; color: #d97706; font-family: monospace;">${(totalEgp || 0).toLocaleString()} ج.م</span>
+            </div>
+          </div>
+        `;
+      } else if (type === 'egyptian') {
+        reportTitle = 'الملخص';
+        tableHeaders = [];
+        
+        const record = state.egyptianCashRecords?.[state.egyptianCashRecords.length - 1] || null;
+        if (record) {
+          const rowsToPrint = record.rows.filter(r => Number(r.value) > 0 || Number(r.commission) > 0) || [];
+          let table1GrandTotal = 0;
+          rowsToPrint.forEach(r => {
+            table1GrandTotal += (Number(r.value) || 0) - (Number(r.commission) || 0);
+          });
+
+          const previous = Number(record.previousValue) || 0;
+          const received = Number(record.receivedValue) || 0;
+          const remainder = (previous + received) - table1GrandTotal;
+
+          tableRowsHtml = '';
+          summaryHtml = `
+            <div style="margin-top: 25px;">
+              <table style="width: 100%; border-collapse: collapse; margin-top: 15px; border: 2px solid #312e81;">
+                <thead>
+                  <tr style="background-color: #e0e7ff; color: #312e81;">
+                    <th style="padding: 10px; border: 1px solid #c7d2fe; text-align: center;">القيمة السابقة</th>
+                    <th style="padding: 10px; border: 1px solid #c7d2fe; text-align: center;">المستلمة اليوم</th>
+                    <th style="padding: 10px; border: 1px solid #c7d2fe; text-align: center;">إجمالي الشغل</th>
+                    <th style="padding: 10px; border: 1px solid #c7d2fe; text-align: center; background-color: #ede9fe; color: #4c1d95;">الباقي النهائي</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style="padding: 12px; text-align: center; font-weight: bold; border: 1px solid #c7d2fe;">${previous.toLocaleString()}</td>
+                    <td style="padding: 12px; text-align: center; font-weight: bold; border: 1px solid #c7d2fe;">${received.toLocaleString()}</td>
+                    <td style="padding: 12px; text-align: center; font-weight: bold; border: 1px solid #c7d2fe;">${table1GrandTotal.toLocaleString()}</td>
+                    <td style="padding: 12px; text-align: center; font-weight: 900; background-color: #f5f3ff; color: ${remainder < 0 ? '#b91c1c' : '#86198f'}; border: 1px solid #c7d2fe; font-size: 18px;">${remainder.toLocaleString()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          `;
+        } else {
+          tableRowsHtml = '';
+          summaryHtml = `<div style="text-align: center; padding: 20px;">لا توجد سجلات مصراوية</div>`;
+        }
+      } else if (type === 'purchases') {
+        reportTitle = 'سجل التوريدات وفواتير المشتريات للشركة';
+        tableHeaders = ['م', 'البيان ومورد البضاعة', 'رقم المرجع', 'تاريخ الشراء', 'القيمة المقيدة'];
+        
+        const purchases = state.purchases?.slice(-25) || [];
+        let totalPurchases = 0;
+
+        tableRowsHtml = purchases.map((p, idx) => {
+          totalPurchases += p.totalPrice;
+          return `
+            <tr>
+              <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
+              <td style="font-weight: bold; color: #1e293b;">${p.itemName}</td>
+              <td style="text-align: center; font-family: monospace;">${p.referenceNo}</td>
+              <td style="text-align: center;">${new Date(p.date).toLocaleDateString('ar-LY')}</td>
+              <td style="text-align: left; font-family: monospace; font-weight: 900; background-color: #fafaf9; color: #b91c1c;">${(p.totalPrice || 0).toLocaleString()} د.ل</td>
+            </tr>
+          `;
+        }).join('');
+
+        if (purchases.length === 0) {
+          tableRowsHtml = `<tr><td colspan="5" style="text-align: center;">لا توجد مشتريات مقيدة مؤخراً</td></tr>`;
+        }
+
+        summaryHtml = `
+          <div style="margin-top: 25px; padding: 15px; border: 2px solid #b91c1c; border-radius: 8px; background-color: #fef2f2; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 14px; font-weight: bold; color: #b91c1c;">إجمالي المشتريات ضمن الكشف:</span>
+            <span style="font-size: 20px; font-weight: 900; color: #b91c1c; font-family: monospace;">${(totalPurchases || 0).toLocaleString()} دينار ليبي</span>
+          </div>
+        `;
+      } else if (type === 'sales') {
+        reportTitle = 'كشف حركة المبيعات وفواتير الزبائن';
+        tableHeaders = ['م', 'العميل', 'البيان', 'رقم المرجع', 'تاريخ البيع', 'قيمة المبيعات'];
+        
+        const sales = (state.debtTransactions || []).filter(t => t.type === 'debt').slice(-25);
+        let totalSales = 0;
+
+        tableRowsHtml = sales.map((s, idx) => {
+          totalSales += s.amount;
+          const customer = state.customers.find(c => c.id === s.customerId);
+          return `
+            <tr>
+              <td style="text-align: center; font-weight: bold;">${idx + 1}</td>
+              <td style="font-weight: bold; color: #1e293b;">${customer?.name || 'غير معروف'}</td>
+              <td style="font-weight: bold; color: #334155;">${s.note}</td>
+              <td style="text-align: center; font-family: monospace;">${s.referenceNo}</td>
+              <td style="text-align: center;">${new Date(s.date).toLocaleDateString('ar-LY')}</td>
+              <td style="text-align: left; font-family: monospace; font-weight: 900; background-color: #fafaf9; color: #15803d;">${(s.amount || 0).toLocaleString()} د.ل</td>
+            </tr>
+          `;
+        }).join('');
+
+        if (sales.length === 0) {
+          tableRowsHtml = `<tr><td colspan="6" style="text-align: center;">لا توجد مبيعات مقيدة مؤخراً</td></tr>`;
+        }
+
+        summaryHtml = `
+          <div style="margin-top: 25px; padding: 15px; border: 2px solid #065f46; border-radius: 8px; background-color: #ecfdf5; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 14px; font-weight: bold; color: #065f46;">إجمالي قيمة المبيعات ضمن الكشف:</span>
+            <span style="font-size: 20px; font-weight: 900; color: #065f46; font-family: monospace;">${(totalSales || 0).toLocaleString()} دينار ليبي</span>
+          </div>
+        `;
+      } else {
+        reportTitle = 'تقرير قائمة كشف رصيد وحركة الخزنة المركزية';
+        tableHeaders = ['رقم', 'التاريخ', 'تفاصيل الحركة والقيد', 'المصدر الأساسي', 'نوع المعاملة', 'المبلغ المحصّل'];
+        
+        const txs = state.treasuryTransactions.slice(-25);
+        let totalIn = 0;
+        let totalOut = 0;
+
+        tableRowsHtml = txs.map((t, idx) => {
+          if (t.type === 'in') totalIn += t.amount;
+          else totalOut += t.amount;
+          return `
+            <tr>
+              <td style="text-align: center; font-family: monospace;">${idx + 1}</td>
+              <td style="text-align: center; font-size: 11px;">${new Date(t.date).toLocaleDateString('ar-LY')}</td>
+              <td style="font-weight: bold; color: #1e293b;">${t.description}</td>
+              <td style="text-align: center; font-size: 11px; font-weight: bold;">${t.source === 'customer_payment' ? 'سداد عميل' : 'سداد شركات'}</td>
+              <td style="text-align: center; font-weight: bold; color: ${t.type === 'in' ? '#15803d' : '#b91c1c'};">${t.type === 'in' ? 'وارد للدرج 📥' : 'صادر وتخليص 📤'}</td>
+              <td style="text-align: left; font-family: monospace; font-weight: 900; color: ${t.type === 'in' ? '#15803d' : '#b91c1c'};">${(t.amount || 0).toLocaleString()} د.ل</td>
+            </tr>
+          `;
+        }).join('');
+
+        summaryHtml = `
+          <div style="margin-top: 25px; padding: 15px; border: 2px solid #059669; border-radius: 8px; background-color: #ecfdf5; display: flex; justify-content: space-between; align-items: center; gap: 20px;">
+            <div style="text-align: right;">
+              <div style="font-size: 12px; color: #047857; margin-bottom: 2px;">إجمالي الإيرادات المقيدة: <strong>${(totalIn || 0).toLocaleString()} د.ل</strong></div>
+              <div style="font-size: 12px; color: #b91c1c;">إجمالي المصروفات المقيدة: <strong>${(totalOut || 0).toLocaleString()} د.ل</strong></div>
+            </div>
+            <div style="text-align: left; border-right: 2px solid #059669; padding-right: 15px;">
+              <span style="font-size: 12px; font-weight: bold; color: #1f2937; display: block;">رصيد التدقيق المتبقي:</span>
+              <span style="font-size: 20px; font-weight: 900; color: #059669; font-family: monospace;">${((totalIn - totalOut) || 0).toLocaleString()} د.ل</span>
+            </div>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="report-name">${reportTitle}</div>
+        ${tableHeaders && tableHeaders.length > 0 ? `
+        <table>
+          <thead>
+            <tr>
+              ${tableHeaders.map(th => `<th>${th}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRowsHtml}
+          </tbody>
+        </table>
+        ` : ''}
+        ${summaryHtml}
+        <br/><br/>
       `;
-    }
+    };
+
+    const allReportsHtml = getReportContent(selectedReport);
 
     const htmlContent = `
       <html dir="rtl" lang="ar">
         <head>
-          <title>${reportTitle}</title>
+          <title>تقرير النظام المالي المعتمد</title>
           <meta charset="utf-8" />
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
@@ -203,10 +332,11 @@ export default function PdfExportModule({ state }: PdfExportModuleProps) {
               padding: 40px;
               margin: 0;
               direction: rtl;
+              width: 800px;
             }
             .border-wrap {
               border: 3px double #d4af37;
-              padding: 24px;
+              padding: 30px;
               border-radius: 12px;
               min-height: calc(100vh - 130px);
               position: relative;
@@ -286,25 +416,10 @@ export default function PdfExportModule({ state }: PdfExportModuleProps) {
             tr:nth-child(even) {
               background-color: #f8fafc;
             }
-            .signatures {
-              margin-top: 50px;
-              display: grid;
-              grid-template-cols: 1fr 1fr 1fr;
-              gap: 20px;
-              text-align: center;
-              font-size: 11px;
-              font-weight: bold;
-              color: #334155;
-            }
-            .sign-box {
-              border-top: 1.5px dashed #cbd5e1;
-              padding-top: 10px;
-              margin-top: 35px;
-            }
             .stamp-wrapper {
               position: absolute;
-              bottom: 120px;
-              left: 40px;
+              bottom: 150px;
+              left: 50px;
               width: 110px;
               height: 110px;
               border-radius: 50%;
@@ -338,16 +453,9 @@ export default function PdfExportModule({ state }: PdfExportModuleProps) {
               z-index: 0;
             }
             @media print {
-              body {
-                padding: 0;
-              }
-              .border-wrap {
-                border: none;
-                padding: 0;
-              }
-              .no-print {
-                display: none;
-              }
+              body { padding: 0; }
+              .border-wrap { border: none; padding: 0; }
+              .no-print { display: none; }
             }
           </style>
         </head>
@@ -373,59 +481,104 @@ export default function PdfExportModule({ state }: PdfExportModuleProps) {
               </div>
             </div>
 
-            <!-- عنوان التقرير -->
-            <div class="report-name">${reportTitle}</div>
-
-            <!-- جدول البيانات الفاخر -->
-            <table>
-              <thead>
-                <tr>
-                  ${tableHeaders.map(th => `<th>${th}</th>`).join('')}
-                </tr>
-              </thead>
-              <tbody>
-                ${tableRowsHtml}
-              </tbody>
-            </table>
-
-            <!-- ملخص الحساب بالأرباح أو المجاميع -->
-            ${summaryHtml}
+            <!-- التقارير -->
+            ${selectedReport === 'all' ? '<div class="report-name" style="margin-bottom: 30px; font-size: 18px; color: #b91c1c;">الكشف العام الشامل المجمع</div>' : ''}
+            ${allReportsHtml}
 
             <!-- مكان الختم الصوري كبرستيج معتمد -->
             <div class="stamp-wrapper">
-              <div>وزارة المالية م.خ</div>
-              <div style="margin: 2px 0; font-size:7px; border-top:1px solid; border-bottom:1px solid; padding:1px 0;">قسم المراجعة المعتمد</div>
+              <div>المنظومه الملكيه</div>
+              <div style="margin: 2px 0; font-size:7px; border-top:1px solid; border-bottom:1px solid; padding:1px 0;">قسم المراجعة والاعتماد</div>
               <span style="font-size: 7px; color: #6b7280;">مستند مصادق عليه</span>
             </div>
-
-            <!-- كتلة التواقيع الرسمية للبرستيج والاعتمادية -->
-            <div class="signatures">
-              <div>
-                <span>المحاسب المعهود</span>
-                <div class="sign-box">طارق الورفلي</div>
-              </div>
-              <div>
-                <span>المراجع المالي العام</span>
-                <div class="sign-box">عبدو المالك</div>
-              </div>
-              <div>
-                <span>الختم والاعتماد المالي</span>
-                <div class="sign-box" style="border:none; color: #d4af37; font-size: 16px;">👑 مصادق ✓</div>
-              </div>
-            </div>
           </div>
-
-          <script>
-            window.onload = function() {
-              window.print();
-            };
-          </script>
         </body>
       </html>
     `;
 
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    try {
+      const tempIframe = document.createElement('iframe');
+      tempIframe.style.position = 'absolute';
+      tempIframe.style.width = '850px';
+      tempIframe.style.height = '1400px';
+      tempIframe.style.top = '-9000px';
+      tempIframe.style.border = 'none';
+      document.body.appendChild(tempIframe);
+
+      const doc = tempIframe.contentWindow?.document;
+      if (!doc) throw new Error('Iframe error');
+
+      doc.open();
+      doc.write(htmlContent);
+      doc.close();
+
+      setTimeout(async () => {
+        try {
+          const bodyEl = tempIframe.contentWindow?.document.body;
+          if (!bodyEl) throw new Error("Could not find body element.");
+
+          const dataUrl = await toPng(bodyEl, {
+            quality: 1.0,
+            pixelRatio: 2,
+            backgroundColor: '#ffffff'
+          });
+
+          const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'pt',
+            format: 'a4'
+          });
+
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = pdf.internal.pageSize.getHeight();
+          
+          const elWidth = bodyEl.offsetWidth || 800;
+          const elHeight = bodyEl.offsetHeight || 1200;
+
+          const finalW = pdfWidth;
+          const finalH = (pdfWidth * elHeight) / elWidth;
+
+          let heightLeft = finalH;
+          let position = 0;
+
+          pdf.addImage(dataUrl, 'PNG', 0, position, finalW, finalH);
+          heightLeft -= pdfHeight;
+
+          while (heightLeft > 0) {
+            position = heightLeft - finalH;
+            pdf.addPage();
+            pdf.addImage(dataUrl, 'PNG', 0, position, finalW, finalH);
+            heightLeft -= pdfHeight;
+          }
+
+          pdf.autoPrint();
+          const blob = pdf.output('blob');
+          const blobUrl = URL.createObjectURL(blob);
+          
+          if (popupWin) {
+            popupWin.location.href = blobUrl;
+          } else {
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.target = '_blank';
+            a.click();
+          }
+        } catch(err) {
+          console.error(err);
+          if (popupWin) popupWin.close();
+          alert('تعذر إنشاء ملف الـ PDF. حاول مرة أخرى.');
+        } finally {
+          document.body.removeChild(tempIframe);
+          setGeneratingPdf(false);
+        }
+      }, 2000); // 2 second delay to load fonts
+      
+    } catch (err) {
+      console.error(err);
+      if (popupWin) popupWin.close();
+      alert('فشل في إعداد التقرير.');
+      setGeneratingPdf(false);
+    }
   };
 
   return (
@@ -450,10 +603,15 @@ export default function PdfExportModule({ state }: PdfExportModuleProps) {
 
         <button 
           onClick={handlePrint}
-          className="bg-amber-600 hover:bg-amber-700 hover:scale-102 flex items-center justify-center gap-2 px-5 py-3 text-white text-xs font-black rounded-lg transition-all shadow-md shrink-0 cursor-pointer"
+          disabled={generatingPdf}
+          className="bg-amber-600 hover:bg-amber-700 hover:scale-102 flex items-center justify-center gap-2 px-5 py-3 text-white text-xs font-black rounded-lg transition-all shadow-md shrink-0 cursor-pointer disabled:opacity-50 disabled:cursor-wait"
         >
-          <Printer className="w-4 h-4 text-white" />
-          <span>توليد وطباعة مستند الـ PDF الفاخر 🖨️</span>
+          {generatingPdf ? (
+            <Loader2 className="w-4 h-4 text-white animate-spin" />
+          ) : (
+            <Printer className="w-4 h-4 text-white" />
+          )}
+          <span>{generatingPdf ? 'جاري المعالجة الدقيقة...' : 'توليد وطباعة مستند الـ PDF الفاخر 🖨️'}</span>
         </button>
       </div>
 
@@ -480,18 +638,32 @@ export default function PdfExportModule({ state }: PdfExportModuleProps) {
 
             {/* Selector column */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans">حدد نوع التقرير الفاخر المراد تصديره:</label>
-              <select 
-                value={selectedReport}
-                onChange={(e) => setSelectedReport(e.target.value)}
-                className="w-full p-2.5 border border-slate-200 rounded-xl text-xs bg-white font-bold text-slate-900"
-              >
-                <option value="customers">👥 كشف حساب ديون العملاء والزبائن الإجمالي</option>
-                <option value="merchants">💼 كشف ديون وحسابات في دفتر كبار التجار</option>
-                <option value="companies">🏭 بيان الحسابات وتخالص الشركات والموردين</option>
-                <option value="deposits">🔒 كشف سندات الأمانات والودائع الجارية للزبائن</option>
-                <option value="treasury">💸 تقرير حركة الخزنة المركزية اليومية وإقفال الصندوق</option>
-              </select>
+              <label className="block text-xs font-bold text-slate-700 mb-3 font-sans">حدد نوع التقرير الفاخر المراد تصديره:</label>
+              <div className="flex flex-col gap-3 border bg-white p-3 rounded-2xl border-slate-200 shadow-sm max-h-[400px] overflow-y-auto scrollbar-thin">
+                {[
+                  { id: 'customers', icon: '👥', label: 'كشف حساب ديون العملاء والزبائن الإجمالي' },
+                  { id: 'merchants', icon: '💼', label: 'كشف ديون وحسابات كبار التجار' },
+                  { id: 'companies', icon: '🏭', label: 'بيان الحسابات وتخالص الشركات والموردين' },
+                  { id: 'deposits', icon: '🔒', label: 'كشف سندات الأمانات والودائع الجارية' },
+                  { id: 'treasury', icon: '💸', label: 'تقرير حركة الخزنة المركزية اليومية' },
+                  { id: 'purchases', icon: '📦', label: 'سجل فواتير وحركة المشتريات للشركة' },
+                  { id: 'sales', icon: '🛒', label: 'سجل حركة المبيعات وفواتير الزبائن' },
+                  { id: 'egyptian', icon: '🇪🇬', label: 'الكشف النهائي للمنظومة الماسيه الملكيه' },
+                ].map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setSelectedReport(opt.id)}
+                    className={`flex items-center gap-4 p-4 text-right transition-all rounded-xl border-2 w-full ${
+                      selectedReport === opt.id
+                        ? 'bg-indigo-50 border-indigo-600 text-indigo-800 shadow-sm'
+                        : 'bg-white border-slate-100 hover:border-slate-200 hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <span className="text-3xl drop-shadow-sm">{opt.icon}</span>
+                    <span className="text-sm font-black flex-1">{opt.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Stamp styles */}

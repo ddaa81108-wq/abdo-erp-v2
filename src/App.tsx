@@ -6,8 +6,10 @@ import {
   Database, Search, FileDown, AlertCircle, FileSpreadsheet, Bell, Info,
   LogOut, Settings, Shield, X, Menu
 } from 'lucide-react';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 import { ERPState, INITIAL_ERP_STATE, DebtTransaction, Customer, CustomerCycle, PurchaseRecord, User } from './types';
+import { db } from './firebase';
 
 // Import subcomponents
 import AlertCenter from './components/AlertCenter';
@@ -87,45 +89,94 @@ export default function App() {
   const [showSeedBannerConfirm, setShowSeedBannerConfirm] = useState(false);
   const [showCustomToast, setShowCustomToast] = useState('');
 
-  // 1. LocalStorage Synchronization Core
+  // 1. Firebase Synchronization Core
   useEffect(() => {
-    const saved = localStorage.getItem('ABDO_ERP_V2_DATA');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.customers && parsed.cycles) {
-          // Backward compatibility check to load default users list if empty
-          if (!parsed.users || !Array.isArray(parsed.users) || parsed.users.length === 0) {
-            parsed.users = INITIAL_ERP_STATE.users;
+    let unmounted = false;
+    
+    const loadData = async () => {
+      // First try localStorage for fast boot (offline support/cache)
+      const tryLocal = localStorage.getItem('ABDO_ERP_V2_DATA');
+      let loadedState = null;
+      if (tryLocal) {
+        try {
+          loadedState = JSON.parse(tryLocal);
+          if (!loadedState.users || !Array.isArray(loadedState.users) || loadedState.users.length === 0) {
+            loadedState.users = INITIAL_ERP_STATE.users;
           }
-          if (!parsed.merchants || !Array.isArray(parsed.merchants)) {
-            parsed.merchants = INITIAL_ERP_STATE.merchants;
+          if (!loadedState.merchants || !Array.isArray(loadedState.merchants)) {
+            loadedState.merchants = INITIAL_ERP_STATE.merchants;
           }
-          if (!parsed.merchantTransactions || !Array.isArray(parsed.merchantTransactions)) {
-            parsed.merchantTransactions = INITIAL_ERP_STATE.merchantTransactions;
+          if (!loadedState.merchantTransactions || !Array.isArray(loadedState.merchantTransactions)) {
+            loadedState.merchantTransactions = INITIAL_ERP_STATE.merchantTransactions;
           }
-          if (!parsed.egyptianCashRecords || !Array.isArray(parsed.egyptianCashRecords)) {
-            parsed.egyptianCashRecords = [];
+          if (!loadedState.egyptianCashRecords || !Array.isArray(loadedState.egyptianCashRecords)) {
+            loadedState.egyptianCashRecords = [];
           }
-          setState(parsed);
-        } else {
-          // If corrupted state, boot with initial
-          localStorage.setItem('ABDO_ERP_V2_DATA', JSON.stringify(INITIAL_ERP_STATE));
-          setState(INITIAL_ERP_STATE);
-        }
-      } catch (err) {
-        localStorage.setItem('ABDO_ERP_V2_DATA', JSON.stringify(INITIAL_ERP_STATE));
-        setState(INITIAL_ERP_STATE);
+          if (!unmounted && loadedState.customers && loadedState.cycles) {
+            setState(loadedState);
+          }
+        } catch (e) {}
       }
-    } else {
-      localStorage.setItem('ABDO_ERP_V2_DATA', JSON.stringify(INITIAL_ERP_STATE));
-      setState(INITIAL_ERP_STATE);
-    }
+
+      // Then try Firebase
+      if (db) {
+        try {
+          const docRef = doc(db, 'erp_system', 'main_state');
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const data = docSnap.data() as ERPState;
+            // Backfill new properties
+            if (!data.users || data.users.length === 0) data.users = INITIAL_ERP_STATE.users;
+            if (!data.merchants) data.merchants = INITIAL_ERP_STATE.merchants;
+            if (!data.merchantTransactions) data.merchantTransactions = INITIAL_ERP_STATE.merchantTransactions;
+            if (!data.egyptianCashRecords) data.egyptianCashRecords = [];
+            
+            if (!unmounted) {
+              setState(data);
+              // Update local cache
+              localStorage.setItem('ABDO_ERP_V2_DATA', JSON.stringify(data));
+            }
+          } else {
+            // First time setup in Firebase
+            if (!loadedState) {
+               if (!unmounted) setState(INITIAL_ERP_STATE);
+               await setDoc(docRef, INITIAL_ERP_STATE);
+               localStorage.setItem('ABDO_ERP_V2_DATA', JSON.stringify(INITIAL_ERP_STATE));
+            } else {
+               await setDoc(docRef, loadedState);
+            }
+          }
+        } catch (err) {
+          console.error("Firebase fetch failed, falling back to local storage.", err);
+          if (!loadedState && !unmounted) {
+            setState(INITIAL_ERP_STATE);
+            localStorage.setItem('ABDO_ERP_V2_DATA', JSON.stringify(INITIAL_ERP_STATE));
+          }
+        }
+      } else {
+         if (!loadedState && !unmounted) {
+            setState(INITIAL_ERP_STATE);
+            localStorage.setItem('ABDO_ERP_V2_DATA', JSON.stringify(INITIAL_ERP_STATE));
+         }
+      }
+    };
+
+    loadData();
+    return () => { unmounted = true; };
   }, []);
 
-  const updateStateAndSync = (newState: ERPState) => {
+  const updateStateAndSync = async (newState: ERPState) => {
     setState(newState);
+    // Optimistically update local cache
     localStorage.setItem('ABDO_ERP_V2_DATA', JSON.stringify(newState));
+    // Save to Firebase
+    if (db) {
+       try {
+         await setDoc(doc(db, 'erp_system', 'main_state'), newState);
+       } catch (err) {
+         console.error("Failed to sync to Firebase", err);
+       }
+    }
   };
 
   const handleExportAllToExcel = () => {
@@ -656,7 +707,7 @@ export default function App() {
                   { id: 'merchants', label: '2. قسم ديون التجار 💼', enabled: currentUser.permissions.canViewCompanies || currentUser.permissions.canViewDebts },
                   { id: 'companies', label: '3. قسم ديون الشركات 🏭', enabled: currentUser.permissions.canViewCompanies },
                   { id: 'deposits', label: '4. قسم الأمانات 🛡️', enabled: currentUser.permissions.canViewDeposits },
-                  { id: 'mail_manual', label: '5. قسم البريد واليدوي 📬', enabled: true },
+                  { id: 'mail_manual', label: '5. المصراوية 🇪🇬', enabled: true },
                   { id: 'purchases', label: '6. قسم المشتريات 🛒', enabled: currentUser.permissions.canViewPurchases },
                   { id: 'treasury', label: '7. قسم الخزنة 💰', enabled: currentUser.permissions.canViewTreasury },
                   { id: 'financial_reports', label: '8. قسم التقارير المالية 📊', enabled: true },

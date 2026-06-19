@@ -451,10 +451,6 @@ export default function CustomerDebtsModule({ state, onUpdateState, onOpenExport
     if (!targetCustId) {
       setSelectedCustomerId(null);
     }
-
-    alert(`🎉 تم حذف وإزالة الزبون بنجاح وفق الخيار المختار (${
-      strategy === 'settle_to_treasury' ? 'تحصيل وترحيل المبلغ لمالية الخزينة مباشرة' : 'حذف وإسقاط الحساب دون إضافة مال'
-    }).`);
   };
 
   // ----------------------------------------------------
@@ -605,7 +601,7 @@ export default function CustomerDebtsModule({ state, onUpdateState, onOpenExport
                     onClick={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
-                      setQuickXCustomer(acc);
+                      handleExecuteWipeAndSettle('delete_subordinate', acc.cust.id);
                     }}
                     className="bg-rose-50 hover:bg-rose-100 text-rose-600 p-1 rounded-md transition-all cursor-pointer shrink-0 hover:scale-105"
                     title="أرشفة ❌"
@@ -1098,64 +1094,7 @@ export default function CustomerDebtsModule({ state, onUpdateState, onOpenExport
         </div>
       )}
 
-      {/* نافذة التأكيد السريع للزر X - سدد ولا ما سددش؟ */}
-      {quickXCustomer && (
-        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-50 flex items-center justify-center p-4" dir="rtl">
-          <div className="bg-white rounded-2xl p-5 shadow-2xl max-w-md w-full border border-slate-200 text-right">
-            <h3 className="font-black text-sm text-slate-950 border-b pb-3 mb-3 text-rose-600 flex items-center gap-1.5">
-              <AlertCircle className="w-5 h-5 text-rose-500" />
-              <span>إغلاق وأرشفة كارت الزبون من الشاشة</span>
-            </h3>
 
-            <p className="text-xs text-slate-700 leading-relaxed mb-4">
-              أنت على وشك إخفاء بطاقة الزبون <strong className="text-indigo-600">{quickXCustomer.cust.name}</strong> من شاشة العرض الرئيسية.
-              <br />
-              المبلغ المتبقي بذمته حالياً هو: <strong className="text-rose-600">{quickXCustomer.debtBalance.toLocaleString()} د.ل</strong>.
-              <br /><br />
-              <span className="font-bold text-slate-900 block mb-1">الرجاء توضيح سبب المسح (سدد ولا ما سددش؟):</span>
-            </p>
-
-            <div className="space-y-2.5">
-              {/* الخيار الأول: سدد */}
-              <button
-                onClick={() => handleExecuteWipeAndSettle('settle_to_treasury', quickXCustomer.cust.id)}
-                className="w-full text-right p-3 rounded-xl border border-emerald-250 bg-emerald-50 hover:bg-emerald-100/80 text-emerald-950 transition flex items-start gap-2.5 cursor-pointer"
-              >
-                <div className="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-[11px] shrink-0">✓</div>
-                <div>
-                  <strong className="block text-xs font-black">سدد المبلغ (الاسم يتمسح من الشاشة ويدخل كاش للخزينة)</strong>
-                  <span className="text-[10px] text-emerald-800 leading-normal mt-0.5 block">
-                    سيتم تصفير الرصيد فورا وتسجيل الحركة كدفعة مستلمة مع ترحيل كاش ({quickXCustomer.debtBalance.toLocaleString()} د.ل) إلى الخزينة المركزية، ويبقى بالكامل في الأرشيف الدائم للزبون.
-                  </span>
-                </div>
-              </button>
-
-              {/* الخيار الثاني: ما سددش */}
-              <button
-                onClick={() => handleExecuteWipeAndSettle('delete_subordinate', quickXCustomer.cust.id)}
-                className="w-full text-right p-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-900 transition flex items-start gap-2.5 cursor-pointer"
-              >
-                <div className="w-5 h-5 rounded-full bg-slate-500 text-white font-bold flex items-center justify-center text-[11px] shrink-0">✗</div>
-                <div>
-                  <strong className="block text-xs font-black">ما سددش (شطب وإلغاء الدين من الشاشة دون قيد مالي)</strong>
-                  <span className="text-[10px] text-slate-500 leading-normal mt-0.5 block">
-                    سيتم شطب الدين وإلغائه دون تسجيل توريد بالخزينة لحالات الأخطاء أو خصومات المناديب، ويتم إخفاء الكارت من الشاشة مع بقاء كامل السجلات التاريخية للرجوع لها بالأرشيف لاحقاً.
-                  </span>
-                </div>
-              </button>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-4 border-t mt-4">
-              <button
-                onClick={() => setQuickXCustomer(null)}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-4 py-2 rounded-lg text-xs font-bold transition"
-              >
-                تراجع عن المسح
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );
