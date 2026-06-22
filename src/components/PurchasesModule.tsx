@@ -13,51 +13,48 @@ interface PurchaseRow {
   id: string;
   seq: number;
   type: string;    // النوع
-  value: number;   // القيمة (مستور مالي صحيح)
+  value: number | string;   // القيمة (مستور مالي صحيح)
   op: 'multiply' | 'divide'; // ضرب أو قسمة
-  rate: number;    // السعر / نسبة التحويل (يمكن أن تكون عشرية كالصرف)
+  rate: number | string;    // السعر / نسبة التحويل (يمكن أن تكون عشرية كالصرف)
   result: number;  // الناتج المعادل (مستور مالي صحيح)
-  paid: number;    // المسدد اليوم د.ل (مستور مالي صحيح)
+  paid: number | string;    // المسدد اليوم د.ل (مستور مالي صحيح)
   remaining: number; // باقي القيد د.ل (مستور مالي صحيح)
 }
 
 interface ConsumerRow {
   id: string;
   name: string;
-  amount: number;
+  amount: number | string;
 }
 
 interface MerchantPurchaseState {
-  previousBalance: number;
+  previousBalance: number | string;
+  egyptianPreviousBalance?: number;
   rows: PurchaseRow[];
-  manualConsumerValue: number; // المبلغ الإجمالي للمستهلك بالمصري المدخل يدوياً
+  manualConsumerValue: number | string; // المبلغ الإجمالي للمستهلك بالمصري المدخل يدوياً
   consumerRows?: ConsumerRow[]; // المستهلكين المنفصلين لقيمة فودافون كاش
 }
 
 const DEFAULT_STATE: Record<string, MerchantPurchaseState> = {
   baqy: {
-    previousBalance: 1500,
-    rows: [
-      { id: 'b_row_1', seq: 1, type: 'فودافون كاش وارد', value: 100000, op: 'divide', rate: 10.0, result: 10000, paid: 2000, remaining: 8000 },
-      { id: 'b_row_2', seq: 2, type: 'بضاعة وتوريد كوابل', value: 3000, op: 'multiply', rate: 1.0, result: 3000, paid: 3000, remaining: 0 }
-    ],
-    manualConsumerValue: 35000,
+    previousBalance: 0,
+    egyptianPreviousBalance: 0,
+    rows: [],
+    manualConsumerValue: 0,
     consumerRows: [
-      { id: 'b_c_1', name: 'المستهلك الأول', amount: 20000 },
-      { id: 'b_c_2', name: 'المستهلك الثاني', amount: 15000 },
+      { id: 'b_c_1', name: 'المستهلك الأول', amount: 0 },
+      { id: 'b_c_2', name: 'المستهلك الثاني', amount: 0 },
       { id: 'b_c_3', name: 'المستهلك الثالث', amount: 0 }
     ]
   },
   semsem: {
-    previousBalance: 500,
-    rows: [
-      { id: 's_row_1', seq: 1, type: 'كروت شحن جملة', value: 2500, op: 'multiply', rate: 1.0, result: 2500, paid: 1500, remaining: 1000 },
-      { id: 's_row_2', seq: 2, type: 'فودافون خطوط مميزة', value: 50000, op: 'divide', rate: 12.5, result: 4000, paid: 3000, remaining: 1000 }
-    ],
-    manualConsumerValue: 20000,
+    previousBalance: 0,
+    egyptianPreviousBalance: 0,
+    rows: [],
+    manualConsumerValue: 0,
     consumerRows: [
-      { id: 's_c_1', name: 'المستهلك الأول', amount: 10000 },
-      { id: 's_c_2', name: 'المستهلك الثاني', amount: 10000 },
+      { id: 's_c_1', name: 'المستهلك الأول', amount: 0 },
+      { id: 's_c_2', name: 'المستهلك الثاني', amount: 0 },
       { id: 's_c_3', name: 'المستهلك الثالث', amount: 0 }
     ]
   }
@@ -72,8 +69,18 @@ export default function PurchasesModule({ state, onUpdateState, onOpenExporter }
   
   // States for the new Giant HD Capture modal
   const [showHdModal, setShowHdModal] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [copiedHd, setCopiedHd] = useState(false);
   const [generatingHd, setGeneratingHd] = useState(false);
+
+  const confirmResetPurchases = () => {
+    setMerchStates({
+      baqy: { previousBalance: 0, egyptianPreviousBalance: 0, rows: [], manualConsumerValue: 0, consumerRows: [] },
+      semsem: { previousBalance: 0, egyptianPreviousBalance: 0, rows: [], manualConsumerValue: 0, consumerRows: [] }
+    });
+    onUpdateState({ ...state, purchases: [] });
+    setShowResetConfirm(false);
+  };
   const hdCardsRef = useRef<HTMLDivElement>(null);
 
   // Generate and save Full HD cards
@@ -130,12 +137,12 @@ export default function PurchasesModule({ state, onUpdateState, onOpenExporter }
 
   const [merchStates, setMerchStates] = useState<Record<string, MerchantPurchaseState>>(() => {
     try {
-      const saved = localStorage.getItem('ABDO_DAILY_PURCHASES_V3');
+      const saved = localStorage.getItem('ABDO_DAILY_PURCHASES_V4');
       if (saved) {
         const parsed = JSON.parse(saved);
         // Ensure manualConsumerValue & consumerRows are present
         Object.keys(parsed).forEach(k => {
-          if (typeof parsed[k].manualConsumerValue !== 'number') {
+          if (typeof parsed[k].manualConsumerValue !== 'number' && typeof parsed[k].manualConsumerValue !== 'string') {
             parsed[k].manualConsumerValue = 0;
           }
           if (!parsed[k].consumerRows) {
@@ -144,18 +151,6 @@ export default function PurchasesModule({ state, onUpdateState, onOpenExporter }
               { id: `${k}_c_2`, name: 'المستهلك الثاني', amount: 0 },
               { id: `${k}_c_3`, name: 'المستهلك الثالث', amount: 0 }
             ];
-          }
-          if (parsed[k].previousBalance) {
-            parsed[k].previousBalance = Math.round(parsed[k].previousBalance);
-          }
-          if (parsed[k].rows) {
-            parsed[k].rows = parsed[k].rows.map((r: any) => ({
-              ...r,
-              value: Math.round(r.value || 0),
-              result: Math.round(r.result || 0),
-              paid: Math.round(r.paid || 0),
-              remaining: Math.round(r.remaining || 0)
-            }));
           }
         });
         return parsed;
@@ -168,8 +163,26 @@ export default function PurchasesModule({ state, onUpdateState, onOpenExporter }
 
   // Keep localStorage synced
   useEffect(() => {
-    localStorage.setItem('ABDO_DAILY_PURCHASES_V3', JSON.stringify(merchStates));
+    localStorage.setItem('ABDO_DAILY_PURCHASES_V4', JSON.stringify(merchStates));
   }, [merchStates]);
+
+  const [historyRecords, setHistoryRecords] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('ABDO_DAILY_PURCHASES_HISTORY_V4');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('ABDO_DAILY_PURCHASES_HISTORY_V4', JSON.stringify(historyRecords));
+  }, [historyRecords]);
+
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyFilterDate, setHistoryFilterDate] = useState('');
+
 
   const currentData = merchStates[activeMerch] || { previousBalance: 0, rows: [], manualConsumerValue: 0, consumerRows: [] };
 
@@ -181,7 +194,7 @@ export default function PurchasesModule({ state, onUpdateState, onOpenExporter }
     }));
   };
 
-  // Inputs inside row changed - enforce whole numbers
+  // Inputs inside row changed
   const handleRowChange = (rowId: string, field: keyof PurchaseRow, val: any) => {
     updateCurrentMerchantState(prev => {
       const updatedRows = prev.rows.map(r => {
@@ -189,12 +202,8 @@ export default function PurchasesModule({ state, onUpdateState, onOpenExporter }
         
         let newRow = { ...r };
         
-        if (field === 'value') {
-          newRow.value = Math.round(Number(val) || 0);
-        } else if (field === 'paid') {
-          newRow.paid = Math.round(Number(val) || 0);
-        } else if (field === 'rate') {
-          newRow.rate = Number(val) || 0;
+        if (field === 'value' || field === 'paid' || field === 'rate') {
+          newRow[field] = val;
         } else {
           newRow = { ...r, [field]: val };
         }
@@ -216,6 +225,31 @@ export default function PurchasesModule({ state, onUpdateState, onOpenExporter }
       });
       return { ...prev, rows: updatedRows };
     });
+  };
+
+  // Navigate between rows with arrows
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, rowIndex: number, field: string) => {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const nextIndex = e.key === 'ArrowDown' ? rowIndex + 1 : rowIndex - 1;
+      const currentRows = merchStates[activeMerch]?.rows || [];
+
+      if (e.key === 'ArrowDown' && nextIndex >= currentRows.length) {
+        handleAddRow();
+        setTimeout(() => {
+          const nextInput = document.getElementById(`input-${activeMerch}-${field}-${nextIndex}`);
+          if (nextInput) {
+            (nextInput as HTMLInputElement).focus();
+          }
+        }, 50);
+        return;
+      }
+
+      const nextInput = document.getElementById(`input-${activeMerch}-${field}-${nextIndex}`);
+      if (nextInput) {
+        (nextInput as HTMLInputElement).focus();
+      }
+    }
   };
 
   // Add New Row
@@ -249,10 +283,10 @@ export default function PurchasesModule({ state, onUpdateState, onOpenExporter }
   };
 
   // Update Previous Balance
-  const handleUpdatePreviousBalance = (val: number) => {
+  const handleUpdatePreviousBalance = (val: number | string) => {
     updateCurrentMerchantState(prev => ({
       ...prev,
-      previousBalance: Math.round(val)
+      previousBalance: val
     }));
   };
 
@@ -262,15 +296,15 @@ export default function PurchasesModule({ state, onUpdateState, onOpenExporter }
     { id: 'c_3', name: 'المستهلك الثالث', amount: 0 }
   ];
 
-  const handleUpdateConsumerRow = (id: string, amount: number) => {
+  const handleUpdateConsumerRow = (id: string, amount: number | string) => {
     updateCurrentMerchantState(prev => {
       const rows = prev.consumerRows || [
         { id: 'c_1', name: 'المستهلك الأول', amount: prev.manualConsumerValue || 0 },
         { id: 'c_2', name: 'المستهلك الثاني', amount: 0 },
         { id: 'c_3', name: 'المستهلك الثالث', amount: 0 }
       ];
-      const updated = rows.map(r => r.id === id ? { ...r, amount: Math.round(amount) } : r);
-      const newSum = updated.reduce((sum, r) => sum + r.amount, 0);
+      const updated = rows.map(r => r.id === id ? { ...r, amount } : r);
+      const newSum = updated.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
       return {
         ...prev,
         consumerRows: updated,
@@ -304,25 +338,26 @@ export default function PurchasesModule({ state, onUpdateState, onOpenExporter }
   const prevBalance = Math.round(currentData.previousBalance || 0);
 
   // 2. إجمالي شغل اليوم (مجموع القيمة المقيدة بالدينار لكل المعاملات، اللي هي مجموع result)
-  const totalTodayWork = currentData.rows.reduce((sum, r) => sum + r.result, 0);
+  const totalTodayWork = currentData.rows.reduce((sum, r) => sum + (Number(r.result) || 0), 0);
 
   // 3. القيمة المسددة اليوم (مجموع المسدد بالدينار لكل المعاملات)
-  const totalPaidToday = currentData.rows.reduce((sum, r) => sum + r.paid, 0);
+  const totalPaidToday = currentData.rows.reduce((sum, r) => sum + (Number(r.paid) || 0), 0);
+
 
   // 4. الباقي من شغل اليوم (الدين الإجمالي المترصد)
   // حسبة معتمدة: (السابقة + شغل اليوم) - المسدد
   const remainingTotalOwed = prevBalance + totalTodayWork - totalPaidToday;
 
   // 5. إجمالي مبالغ المستهلكين المدخلة يدوياً
-  const totalConsumerValue = consumerRows.reduce((sum, r) => sum + r.amount, 0);
+  const totalConsumerValue = consumerRows.reduce((sum, r) => sum + Number(r.amount || 0), 0);
 
   // 6. المجموع الكلي لفودافون كاش المقيد بالجدول بالجنيه
   const totalVodafoneBase = currentData.rows
     .filter(r => isVodafoneRow(r.type))
-    .reduce((sum, r) => sum + r.value, 0);
+    .reduce((sum, r) => sum + Number(r.value || 0), 0);
 
   // 7. القيمة المصرية الباقية من فودافون كاش (الكارت الخامس)
-  const remainingEgyptianValue = totalVodafoneBase - totalConsumerValue;
+  const remainingEgyptianValue = (currentData.egyptianPreviousBalance || 0) + totalVodafoneBase - totalConsumerValue;
 
   const handleExportToPdf = () => {
     const merchTitle = activeMerch === 'baqy' ? 'التاجر الباقي' : 'التاجر سمسم';
@@ -469,7 +504,7 @@ export default function PurchasesModule({ state, onUpdateState, onOpenExporter }
               ${consumerRows.map(c => `
                 <tr>
                   <td>${c.name}</td>
-                  <td>${c.amount.toLocaleString()} جنيه مصري</td>
+                  <td>${Number(c.amount || 0).toLocaleString()} جنيه مصري</td>
                 </tr>
               `).join('')}
               <tr style="font-weight: bold; background-color: #e9d5ff;">
@@ -534,9 +569,26 @@ export default function PurchasesModule({ state, onUpdateState, onOpenExporter }
   };
 
   const executePerformRollover = () => {
+    const newHistoryRecord = {
+      id: `hist_${Date.now()}`,
+      date: new Date().toISOString(),
+      merchantId: activeMerch,
+      previousBalance: currentData.previousBalance,
+      totalTodayWork,
+      totalPaidToday,
+      remainingTotalOwed,
+      rows: currentData.rows,
+      consumerValue: totalConsumerValue,
+      consumerRows: currentData.consumerRows || [],
+      egyptianPreviousBalance: currentData.egyptianPreviousBalance || 0,
+      remainingEgyptianValue,
+    };
+    setHistoryRecords(prev => [newHistoryRecord, ...prev]);
+
     updateCurrentMerchantState(prev => ({
       ...prev,
       previousBalance: remainingTotalOwed,
+      egyptianPreviousBalance: remainingEgyptianValue,
       rows: [],
       manualConsumerValue: 0,
       consumerRows: [
@@ -576,6 +628,7 @@ export default function PurchasesModule({ state, onUpdateState, onOpenExporter }
       currency: 'د.ل',
       conversionRate: 1.0,
       date: new Date().toISOString(),
+      partyName: 'مورد خارجي',
       referenceNo: refNo,
       source: 'manual_deposit' as const,
       description: `صرف عملة فودافون كاش (${remainingEgyptianValue.toLocaleString()} جنيه تقسيم سعر ${rate}) لـ (${merchTitle}) كأثر مالي إيجابي بالخزينة`,
@@ -584,10 +637,10 @@ export default function PurchasesModule({ state, onUpdateState, onOpenExporter }
 
     onUpdateState({
       ...state,
-      treasuryTransactions: [...state.treasuryTransactions, newTx]
+      treasuryTransactions: [...(state.treasuryTransactions || []), newTx as any]
     });
 
-    alert(`تم ترحيل وصرف القيمة بنجاح بقيمة +${lydEquivalent.toLocaleString()} د.ل بالخزينة لكونها إضافة إيجابية للجهة! 🎉`);
+    alert(`تم الاعتماد وتم تسجيل الأثر برأس المال الإجمالي بـ ${lydEquivalent.toLocaleString()} د.ل! 🎉`);
   };
 
   // WhatsApp Exporter
@@ -622,336 +675,337 @@ export default function PurchasesModule({ state, onUpdateState, onOpenExporter }
   };
 
   return (
-    <div className="space-y-5 text-right font-sans" dir="rtl">
+    <div className="space-y-4 text-right font-sans" dir="rtl">
       
-      {/* Tab Switcher & HD Capture Action Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-2 bg-transparent text-right">
+      {/* Tab Switcher & Global Actions - Consolidated Toolbar */}
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 p-2 bg-slate-50 border border-slate-200/60 rounded-2xl shadow-sm">
         
         {/* Toggle Switch */}
-        <div className="flex items-center bg-slate-200/60 p-1.5 rounded-xl border border-slate-200 shadow-xs">
+        <div className="inline-flex items-center bg-slate-200/60 p-1 rounded-xl border border-slate-300/50">
           <button
             type="button"
             onClick={() => setActiveMerch('baqy')}
-            className={`px-8 py-2.5 rounded-lg font-black text-xs transition duration-150 cursor-pointer ${
+            className={`px-6 py-2 rounded-lg font-bold text-xs transition-all duration-300 w-32 cursor-pointer ${
               activeMerch === 'baqy'
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                ? 'bg-white text-indigo-700 shadow-sm'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
             }`}
           >
-            البيان (Al Bayan)
+            البيان (Baqy)
           </button>
           <button
             type="button"
             onClick={() => setActiveMerch('semsem')}
-            className={`px-8 py-2.5 rounded-lg font-black text-xs transition duration-150 cursor-pointer ${
+            className={`px-6 py-2 rounded-lg font-bold text-xs transition-all duration-300 w-32 cursor-pointer ${
               activeMerch === 'semsem'
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                ? 'bg-white text-indigo-700 shadow-sm'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
             }`}
           >
-            سمسم (Simsim)
+            سمسم (Semsem)
           </button>
         </div>
 
-        {/* Global Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* HD Camera Button to bring the five cards to screen as requested */}
+        {/* Global Action Buttons - All merged here */}
+        <div className="flex flex-col xl:flex-row xl:items-center justify-end gap-2.5">
+          
+          <div className="flex flex-wrap items-center gap-2.5 justify-end">
+            {/* Transfer Egypt to Treasury Section */}
+            <div className="flex items-center gap-1.5 bg-indigo-50 p-1.5 rounded-lg border border-indigo-100">
+              <input
+                type="text"
+                value={egTransferRate}
+                onChange={(e) => setEgTransferRate(e.target.value)}
+                placeholder="سعر الصرف"
+                className="w-16 h-7 text-center bg-white border border-indigo-200 rounded outline-none font-bold text-[10px] text-indigo-900 focus:border-indigo-500"
+                title="سعر الصرف (قسمة)"
+              />
+              <button
+                type="button"
+                onClick={handleTransferEgyptToTreasury}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 h-7 rounded shadow-sm cursor-pointer transition-colors"
+                title="ترحيل للخزينة بالدينار"
+              >
+                ترحيل د.ل للخزنة
+              </button>
+            </div>
+
+            {/* 3 small Vodafone cash inputs */}
+            <div className="flex items-center gap-1.5 bg-purple-50 p-1.5 rounded-lg border border-purple-100">
+              <span className="text-[10px] font-bold text-purple-700 mx-1">خصم كاش:</span>
+              {consumerRows.map((row, idx) => (
+                <input
+                  key={row.id}
+                  type="text"
+                  value={row.amount || ''}
+                  onChange={(e) => handleUpdateConsumerRow(row.id, e.target.value)}
+                  className="w-16 text-center bg-white border border-slate-200/60 rounded px-1 py-1.5 outline-none font-bold text-[11px] text-slate-900 focus:border-purple-500"
+                  placeholder="0"
+                  title={`الخصم ${idx + 1}`}
+                />
+              ))}
+            </div>
+          </div>
+
           <button
             type="button"
             onClick={() => setShowHdModal(true)}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-5 py-3 rounded-xl cursor-pointer flex items-center gap-1.5 transition whitespace-nowrap shadow-md shadow-emerald-600/20"
-            title="تصوير الكروت الخمسة للزبائن والتاجر بجودة Full HD الخارقة"
+            className="group relative bg-gradient-to-l from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs px-4 py-2.5 rounded-lg cursor-pointer flex items-center gap-2 transition overflow-hidden shadow-sm"
           >
-            <Smartphone className="w-4 h-4 text-emerald-100 animate-pulse" />
-            <span>تصوير الكروت الخمسة 📸 Full HD</span>
+            <div className="absolute inset-0 bg-white/20 translate-x-full group-hover:animate-[shimmer_1.5s_infinite]"></div>
+            <Smartphone className="w-4 h-4" />
+            <span>تصوير الكروت 📸</span>
           </button>
 
           <button
             type="button"
             onClick={handlePerformRollover}
-            className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs px-4 py-3 rounded-xl cursor-pointer flex items-center gap-1.5 transition whitespace-nowrap shadow-sm"
+            className="bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold text-xs px-4 py-2.5 rounded-lg border border-amber-300 cursor-pointer flex items-center gap-1.5 transition"
           >
             <Calendar className="w-4 h-4" />
-            <span>ترحيل الحساب الحالي 🔄</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleExportDailyImage}
-            className="bg-slate-800 hover:bg-slate-750 text-slate-100 font-extrabold text-xs px-4 py-3 rounded-xl border border-slate-700 cursor-pointer flex items-center gap-1.5 transition whitespace-nowrap"
-          >
-            <span>حفظ وتصدير كشف كامل 📸</span>
+            <span>ترحيل الحساب 🔄</span>
           </button>
         </div>
       </div>
 
-      {/* The 5 Custom Analytical Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3.5">
-        {/* Card 1 */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm border-l-4 border-l-slate-700 flex flex-col justify-between">
-          <div>
-            <span className="text-slate-500 font-bold text-[11px] block mb-1">📝 1. القيمة السابقة</span>
-            <div className="flex items-center gap-1 mt-1">
-              <input
-                type="number"
-                step="1"
-                value={prevBalance}
-                onChange={(e) => handleUpdatePreviousBalance(parseFloat(e.target.value) || 0)}
-                className="font-mono text-xl font-bold text-slate-800 w-full border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-right"
-                placeholder="0"
-              />
-              <span className="text-xs font-bold text-slate-400 shrink-0">د.ل</span>
-            </div>
-            <p className="text-[10px] text-slate-400 mt-2">* قيمة الدين القديم المترحل من كشف اليوم السابق.</p>
-          </div>
-        </div>
-
-        {/* Card 2 */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm border-l-4 border-l-amber-600 flex flex-col justify-between">
-          <div>
-            <span className="text-slate-500 font-bold text-[11px] block mb-1">⚡ 2. إجمالي شغل اليوم</span>
-            <span className="font-mono text-xl font-black text-amber-600 block leading-tight mt-1">
-              {totalTodayWork.toLocaleString()} <span className="text-xs font-extrabold">د.ل</span>
-            </span>
-            <p className="text-[10px] text-slate-400 mt-2">* مجموع باقي القيود من جدول التوريد والعمليات الحسابية.</p>
-          </div>
-        </div>
-
-        {/* Card 3 */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm border-l-4 border-l-emerald-600 flex flex-col justify-between">
-          <div>
-            <span className="text-slate-500 font-bold text-[11px] block mb-1">🟢 3. القيمة المسددة</span>
-            <span className="font-mono text-xl font-black text-emerald-700 block leading-tight mt-1">
-              {totalPaidToday.toLocaleString()} <span className="text-xs font-extrabold">د.ل</span>
-            </span>
-            <p className="text-[10px] text-slate-400 mt-2">* قيمة الكاش المسجل كدفعات تحت الحساب.</p>
-          </div>
-        </div>
-
-        {/* Card 4 */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm border-l-4 border-l-indigo-600 flex flex-col justify-between">
-          <div>
-            <span className="text-slate-500 font-bold text-[11px] block mb-1">🎒 4. الباقي من شغل اليوم</span>
-            <span className="font-mono text-xl font-black text-indigo-750 block leading-tight mt-1">
-              {remainingTotalOwed.toLocaleString()} <span className="text-xs font-extrabold">د.ل</span>
-            </span>
-            <p className="text-[10px] text-slate-400 mt-2">الحسبة: (السابقة + شغل اليوم) - المسدد</p>
-          </div>
-        </div>
-
-        {/* Card 5 */}
-        <div className="bg-gradient-to-br from-indigo-50 to-purple-50 border border-purple-200 rounded-2xl p-4 shadow-sm border-l-4 border-l-purple-600 flex flex-col justify-between">
-          <div>
-            <span className="text-purple-900 font-extrabold text-[11px] block mb-1">🇪🇬 5. القيمة المصرية الباقية</span>
-            <span className={`${remainingEgyptianValue < 0 ? 'text-rose-600' : 'text-purple-750'} font-mono text-xl font-black block leading-tight mt-1`}>
-              {remainingEgyptianValue.toLocaleString()} <span className="text-xs font-extrabold">جنيه</span>
-            </span>
-            <p className="text-[10px] text-purple-500/80 mt-2">* المتبقي بعد طرح المستهلك من قيمة فودافون بالجدول.</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Egypt Consumers Panel */}
-      <div className="bg-gradient-to-r from-slate-900 to-purple-950 p-5 rounded-2xl border border-purple-800 shadow-md text-white text-right">
-        <div className="mb-4">
-          <h4 className="font-extrabold text-xs text-purple-200 flex items-center gap-1.5">
-            <span>⚙️ لوحة تصفية وسحب فودافون كاش - المستهلكين المنفصلين</span>
-          </h4>
-          <p className="text-[10.5px] text-slate-400 mt-1">
-            أدخل قيمة كل مستهلك على حدة (بالجنيه المصري EG) في الحقول المستقلة أدناه. سيتم احتساب مجموعهم تلقائياً وطرحه من قيمة فودافون لإصدار الكارت الخامس.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {consumerRows.map((row) => (
-            <div key={row.id} className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 flex flex-col gap-1.5 focus-within:border-purple-500 transition-all">
-              <label className="text-[10px] font-bold text-purple-300">اسم/وصف المستهلك:</label>
-              <input
-                type="text"
-                value={row.name}
-                onChange={(e) => handleUpdateConsumerName(row.id, e.target.value)}
-                className="bg-slate-900/40 text-white font-bold p-1.5 rounded text-xs border border-slate-800 focus:outline-none focus:border-purple-600 focus:bg-slate-900 text-right w-full"
-                placeholder="اسم المستهلك..."
-              />
-              <label className="text-[10px] font-bold text-slate-400 mt-1">القيمة المخصومة (جنيه مصرى):</label>
-              <div className="relative">
+      {/* Main Layout Grid */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+        
+        {/* Right Column: 5 Cards (takes 2 cols) */}
+        <div className="xl:col-span-3 flex flex-col gap-3">
+          
+            {/* Card 1 */}
+            <div className="bg-white border border-slate-200/70 rounded-xl p-3.5 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-slate-500 font-bold text-[11px]">📝 1. القيمة السابقة</span>
+              </div>
+              <div className="flex items-end gap-1.5">
                 <input
                   type="number"
                   step="1"
-                  value={row.amount || ''}
-                  onChange={(e) => handleUpdateConsumerRow(row.id, parseFloat(e.target.value) || 0)}
-                  className="bg-slate-900/40 text-purple-200 font-extrabold font-mono p-2 pr-12 rounded text-xs border border-slate-800 focus:outline-none focus:border-purple-600 focus:bg-slate-900 text-left w-full"
+                  value={prevBalance}
+                  onChange={(e) => handleUpdatePreviousBalance(e.target.value)}
+                  className="font-mono text-2xl font-black text-slate-800 w-full border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-right placeholder-slate-300 transition-colors focus:text-indigo-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   placeholder="0"
                 />
-                <span className="absolute left-2.5 top-2 text-[8.5px] font-bold text-slate-500">جنيه</span>
+                <span className="text-xs font-bold text-slate-400 mb-1">د.ل</span>
               </div>
             </div>
-          ))}
+
+            {/* Card 2 */}
+            <div className="bg-white border border-emerald-100 rounded-xl p-3.5 shadow-sm hover:shadow-md transition-shadow border-t-2 border-t-emerald-400 relative overflow-hidden">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-emerald-700/80 font-bold text-[11px]">⚡ 2. إجمالي شغل اليوم</span>
+              </div>
+              <div>
+                <span className="font-mono text-xl font-black text-emerald-600 leading-none">
+                  {totalTodayWork.toLocaleString()} <span className="text-xs font-bold text-emerald-400">د.ل</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Card 3 */}
+            <div className="bg-white border border-rose-100 rounded-xl p-3.5 shadow-sm hover:shadow-md transition-shadow border-t-2 border-t-rose-400 relative overflow-hidden">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-rose-700/80 font-bold text-[11px]">🟢 3. إجمالي المسددة</span>
+              </div>
+              <div>
+                <span className="font-mono text-xl font-black text-rose-600 leading-none">
+                  {totalPaidToday.toLocaleString()} <span className="text-xs font-bold text-rose-400">د.ل</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Card 4 - Highlighted */}
+            <div className="bg-white border border-indigo-100 rounded-xl p-3.5 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden border-t-2 border-t-indigo-500">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-indigo-700/80 font-bold text-[11px]">🎒 4. الباقي من الشغل</span>
+              </div>
+              <div className="relative z-10">
+                <span className="font-mono text-xl font-black text-indigo-900 leading-none">
+                  {remainingTotalOwed.toLocaleString()} <span className="text-xs font-bold text-indigo-400">د.ل</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Card 5 - Highlighted Egypt */}
+            <div className="bg-white border border-purple-100 rounded-xl p-3.5 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden border-t-2 border-t-purple-500">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-purple-700/80 font-bold text-[11px]">🇪🇬 5. الباقية مصري</span>
+              </div>
+              <div>
+                <span className={`font-mono text-xl font-black leading-none ${remainingEgyptianValue < 0 ? 'text-rose-600' : 'text-purple-600'}`}>
+                  {remainingEgyptianValue.toLocaleString()} <span className="text-xs font-bold text-purple-400">EGP</span>
+                </span>
+              </div>
+            </div>
         </div>
 
-        <div className="mt-4 pt-3 border-t border-slate-800/60 flex flex-col sm:flex-row items-center justify-between text-xs gap-3">
-          <div className="flex items-center gap-2 font-sans">
-            <span className="text-slate-400 font-bold">إجمالي قيمة سحب المستهلكين:</span>
-            <span className="bg-purple-900/60 border border-purple-700 font-mono text-purple-200 font-black px-3 py-1 rounded-lg text-sm">
-              {totalConsumerValue.toLocaleString()} جنيه مصري
-            </span>
-          </div>
-          <div className="text-[10px] text-slate-400 italic">
-            * هذا الإجمالي يُطرح تلقائياً من إجمالي فودافون كاش البالغ بالجنيه ({totalVodafoneBase.toLocaleString()} جنيه) لحساب صافي القيمة المصرية.
+        {/* Middle Column: Table Ledger (takes 9 cols) */}
+        <div className="xl:col-span-9">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col h-full">
+            <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center shadow-sm">
+                  <span className="text-base leading-none">📋</span>
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-950 text-sm">جدول المشتريات اليومية</h3>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowHistoryModal(true)}
+                  className="bg-purple-100 hover:bg-purple-200 text-purple-800 font-extrabold text-xs px-4 py-2.5 rounded-lg shadow-sm cursor-pointer flex items-center gap-1.5 transition-all border border-purple-200"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>سجل الترحيلات</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddRow}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-lg shadow-sm cursor-pointer flex items-center gap-1.5 transition-all"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>إضافة معاملة</span>
+                </button>
+              </div>
+            </div>
+
+            {currentData.rows.length === 0 ? (
+              <div className="p-12 text-center text-slate-400 flex flex-col items-center justify-center flex-grow">
+                <FileText className="w-10 h-10 text-slate-200 mb-3" />
+                <p className="text-xs font-bold text-slate-500 mb-2">لا توجد قيود مسجلة اليوم.</p>
+                <button
+                   onClick={handleAddRow}
+                   className="bg-slate-100/50 hover:bg-indigo-50 border border-slate-200 text-indigo-700 font-bold text-xs px-5 py-2.5 rounded-lg transition-all"
+                >
+                  📝 إنشاء قيد جديد
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto flex-grow p-4 pt-0">
+                <div className="border border-slate-200/80 rounded-xl overflow-hidden shadow-sm mt-4">
+                  <table className="w-full text-right text-[11px] border-collapse">
+                    <thead className="bg-slate-100 text-slate-500 font-bold border-b-2 border-slate-200/80">
+                      <tr>
+                        <th className="p-2 border-l border-slate-200/80 text-center w-8">ت</th>
+                        <th className="p-0 border-l border-slate-200/80 text-center">النوع</th>
+                        <th className="p-0 border-l border-slate-200/80 text-center w-28">القيمة (مصري)</th>
+                        <th className="p-2 border-l border-slate-200/80 text-center w-24">العملية</th>
+                        <th className="p-0 border-l border-slate-200/80 text-center w-20">صرف</th>
+                        <th className="p-2 border-l border-slate-200/80 text-right w-24">الناتج</th>
+                        <th className="p-0 border-l border-slate-200/80 text-center w-28 text-emerald-700">المسدد د.ل</th>
+                        <th className="p-2 border-l border-slate-200/80 text-right w-24 text-indigo-700">الباقي د.ل</th>
+                        <th className="p-2 text-center w-10"><Trash2 className="w-3 h-3 mx-auto" /></th>
+                      </tr>
+                    </thead>
+                    <tbody className="font-mono text-slate-700 divide-y divide-slate-100">
+                      {currentData.rows.map((row, idx) => {
+                        const isVod = isVodafoneRow(row.type);
+                        return (
+                          <tr key={row.id} className={`group transition-colors ${isVod ? 'bg-purple-50/20 font-bold hover:bg-purple-50/40' : 'hover:bg-indigo-50/10'}`}>
+                            <td className="p-1 border-l border-slate-200/80 text-center font-bold bg-slate-50/50 w-8 text-slate-400">
+                              {row.seq}
+                            </td>
+                            <td className="p-0 border-l border-slate-200/80 relative h-9">
+                              <input
+                                id={`input-${activeMerch}-type-${idx}`}
+                                type="text"
+                                value={row.type}
+                                onChange={(e) => handleRowChange(row.id, 'type', e.target.value)}
+                                onKeyDown={(e) => handleKeyDown(e, idx, 'type')}
+                                placeholder="فودافون..."
+                                className="w-full h-full text-right bg-transparent px-2 py-1 outline-none font-sans font-bold text-slate-900 placeholder-slate-300"
+                              />
+                            </td>
+                            <td className="p-0 border-l border-slate-200/80 w-28 text-center h-9">
+                              <input
+                                id={`input-${activeMerch}-value-${idx}`}
+                                type="text"
+                                value={row.value || ''}
+                                onChange={(e) => handleRowChange(row.id, 'value', e.target.value)}
+                                onKeyDown={(e) => handleKeyDown(e, idx, 'value')}
+                                placeholder="0"
+                                className="w-full h-full text-center bg-transparent px-2 py-1 outline-none font-bold text-slate-900 focus:bg-indigo-50/50"
+                              />
+                            </td>
+                            <td className="p-1 border-l border-slate-200/80 w-24 text-center bg-slate-50/30">
+                              <div className="flex items-center justify-center rounded border border-slate-200/60 bg-white shadow-xs overflow-hidden">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRowChange(row.id, 'op', 'divide')}
+                                  className={`flex-1 text-center py-1 text-[9px] font-extrabold transition-all ${
+                                    row.op === 'divide' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  ➗
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRowChange(row.id, 'op', 'multiply')}
+                                  className={`flex-1 text-center py-1 text-[9px] font-extrabold transition-all border-r border-slate-200/40 ${
+                                    row.op === 'multiply' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-50'
+                                  }`}
+                                >
+                                  ✖
+                                </button>
+                              </div>
+                            </td>
+                            <td className="p-0 border-l border-slate-200/80 w-20 text-center h-9">
+                              <input
+                                id={`input-${activeMerch}-rate-${idx}`}
+                                type="text"
+                                value={row.rate || ''}
+                                onChange={(e) => handleRowChange(row.id, 'rate', e.target.value)}
+                                onKeyDown={(e) => handleKeyDown(e, idx, 'rate')}
+                                placeholder="1.0"
+                                className="w-full h-full text-center bg-transparent px-2 py-1 outline-none font-bold text-slate-900 focus:bg-indigo-50/50"
+                              />
+                            </td>
+                            <td className="p-2 border-l border-slate-200/80 text-right font-bold text-slate-900 bg-slate-50/30 w-24">
+                              {row.result.toLocaleString()}
+                            </td>
+                            <td className="p-0 border-l border-slate-200/80 w-28 bg-emerald-50/10 h-9">
+                              <input
+                                id={`input-${activeMerch}-paid-${idx}`}
+                                type="text"
+                                value={row.paid || ''}
+                                onChange={(e) => handleRowChange(row.id, 'paid', e.target.value)}
+                                onKeyDown={(e) => handleKeyDown(e, idx, 'paid')}
+                                placeholder="0"
+                                className="w-full h-full text-center bg-transparent px-2 py-1 outline-none font-bold text-emerald-950 focus:bg-emerald-100/50"
+                              />
+                            </td>
+                            <td className="p-2 border-l border-slate-200/80 text-right font-black text-indigo-900 bg-indigo-50/30 w-24">
+                              {row.remaining.toLocaleString()}
+                            </td>
+                            <td className="p-1 text-center w-10">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteRow(row.id)}
+                                className="text-slate-400 hover:text-rose-600 p-1 hover:bg-rose-50 rounded transition-all mx-auto block"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      </div>
 
-      {/* Table 1: Daily Work Ledger */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">📋</span>
-            <h3 className="font-bold text-slate-950 text-xs">جدول قيود وتفاصيل عمليات المشتريات اليومية</h3>
-          </div>
-          <button
-            type="button"
-            onClick={handleAddRow}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl shadow-xs cursor-pointer flex items-center gap-1 transition"
-          >
-            <Plus className="w-4 h-4" />
-            <span>إضافة معاملة شغل جديدة ➕</span>
-          </button>
-        </div>
 
-        {currentData.rows.length === 0 ? (
-          <div className="p-12 text-center text-slate-400">
-            <p className="text-xs">لا توجد أي قيود شغل مسجلة اليوم.</p>
-            <button
-              onClick={handleAddRow}
-              className="mt-3 bg-slate-100 hover:bg-indigo-50 border text-indigo-750 font-bold text-[11px] px-3.5 py-2 rounded-lg"
-            >
-              انقر هنا للبدء وإضافة أول قيد شغل 📝
-            </button>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs border-collapse">
-              <thead className="bg-slate-50 border-b text-slate-700 font-extrabold">
-                <tr>
-                  <th className="p-3 border-l font-bold text-center w-12 bg-slate-100">ت</th>
-                  <th className="p-3 border-l">النوع (البيان)</th>
-                  <th className="p-3 border-l text-center w-36">القيمة بالكامل (مصري)</th>
-                  <th className="p-3 border-l text-center w-40">العملية الحسابية [ضرب/قسمة]</th>
-                  <th className="p-3 border-l text-center w-28">سعر الصرف</th>
-                  <th className="p-3 border-l text-right w-36">الناتج المعادل د.ل</th>
-                  <th className="p-3 border-l text-center w-32 font-bold text-emerald-800">المسدد اليوم د.ل</th>
-                  <th className="p-3 border-l text-right w-32 font-bold text-indigo-800">باقي القيد د.ل</th>
-                  <th className="p-3 text-center w-16">حذف</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-mono text-slate-700 text-[11.5px]">
-                {currentData.rows.map((row) => {
-                  const isVod = isVodafoneRow(row.type);
-                  return (
-                    <tr key={row.id} className={`hover:bg-slate-50/50 transition-colors ${isVod ? 'bg-purple-50/30 font-bold' : ''}`}>
-                      <td className="p-3 border-l text-center font-bold bg-slate-50/50 w-12 text-slate-400">
-                        {row.seq}
-                      </td>
-                      <td className="p-2 border-l relative min-w-[150px]">
-                        <div className="flex items-center gap-1 w-full">
-                          <input
-                            type="text"
-                            value={row.type}
-                            onChange={(e) => handleRowChange(row.id, 'type', e.target.value)}
-                            placeholder="حدد النوع (مثال: فودافون، بضاعة...)"
-                            className="w-full text-right bg-transparent p-1.5 focus:border-indigo-400 border border-slate-200 focus:bg-white rounded-lg text-xs font-sans font-bold text-slate-900"
-                          />
-                          {isVod && (
-                            <span className="absolute left-2.5 bg-purple-100 text-purple-700 text-[9px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
-                              🇪🇬 فودافون
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-2 border-l w-36 text-center">
-                        <input
-                          type="number"
-                          step="1"
-                          value={row.value || ''}
-                          onChange={(e) => handleRowChange(row.id, 'value', parseFloat(e.target.value) || 0)}
-                          placeholder="0"
-                          className="w-full text-center bg-transparent p-1.5 focus:border-indigo-400 border border-slate-200 focus:bg-white rounded-lg text-xs font-bold text-slate-900"
-                        />
-                      </td>
-                      <td className="p-2 border-l w-40 text-center">
-                        <div className="flex items-center justify-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
-                          <button
-                            type="button"
-                            onClick={() => handleRowChange(row.id, 'op', 'divide')}
-                            className={`flex-1 text-center py-1 rounded-md text-[10px] font-extrabold transition-all duration-150 cursor-pointer ${
-                              row.op === 'divide'
-                                ? 'bg-indigo-600 text-white shadow-xs'
-                                : 'text-slate-500 hover:text-slate-800'
-                            }`}
-                          >
-                            ➗ قسمة
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRowChange(row.id, 'op', 'multiply')}
-                            className={`flex-1 text-center py-1 rounded-md text-[10px] font-extrabold transition-all duration-150 cursor-pointer ${
-                              row.op === 'multiply'
-                                ? 'bg-indigo-600 text-white shadow-xs'
-                                : 'text-slate-500 hover:text-slate-800'
-                            }`}
-                          >
-                            ✖ ضرب
-                          </button>
-                        </div>
-                      </td>
-                      <td className="p-2 border-l w-28 text-center">
-                        <input
-                          type="number"
-                          step="any"
-                          value={row.rate || ''}
-                          onChange={(e) => handleRowChange(row.id, 'rate', parseFloat(e.target.value) || 0)}
-                          placeholder="1.0"
-                          className="w-full text-center bg-transparent p-1.5 focus:border-indigo-400 border border-slate-200 focus:bg-white rounded-lg text-xs font-bold text-slate-900"
-                        />
-                      </td>
-                      <td className="p-3 border-l text-right font-bold text-slate-900 bg-slate-50/20 w-36">
-                        {row.result.toLocaleString()} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
-                      </td>
-                      <td className="p-2 border-l w-32 bg-emerald-50/20">
-                        <input
-                          type="number"
-                          step="1"
-                          value={row.paid || ''}
-                          onChange={(e) => handleRowChange(row.id, 'paid', parseFloat(e.target.value) || 0)}
-                          placeholder="0"
-                          className="w-full text-center p-1.5 border border-emerald-200 focus:border-emerald-500 focus:bg-white rounded-lg text-xs font-bold text-emerald-950 bg-emerald-50/30"
-                        />
-                      </td>
-                      <td className="p-3 border-l text-right font-black text-indigo-900 bg-indigo-50/20 w-32 font-mono">
-                        {row.remaining.toLocaleString()} <span className="text-[10px] text-slate-400 font-sans">د.ل</span>
-                      </td>
-                      <td className="p-2 text-center w-16">
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteRow(row.id)}
-                          className="text-slate-300 hover:text-rose-600 p-1.5 hover:bg-rose-50 rounded-lg transition-all"
-                          title="حذف القيد الحالي"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
 
       {/* Info Notice */}
-      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-650 leading-relaxed text-right animate-none">
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-650 leading-relaxed text-right mt-4 auto-animate">
         💡 <strong className="text-slate-900">نظام فودافون كاش الذكي:</strong> أي سطر بالجدول يحتوي على كلمة <span className="text-purple-700 font-bold">"فودافون"</span> أو <span className="text-purple-700 font-bold">"Vodafone"</span> في حقل البيان، يتم سحب قيمته تلقائياً بالجنيه وإضافته لمجموع فودافون الكلي بالجدول (المجموع الحالي: {totalVodafoneBase.toLocaleString()} جنيه)، ليتم موازنته مع مسحوبات المستهلكين.
       </div>
 
@@ -983,63 +1037,60 @@ export default function PurchasesModule({ state, onUpdateState, onOpenExporter }
               </p>
 
               {/* 📷 CRISP STAGE (To Be Captured) */}
-              <div className="w-full overflow-auto p-2 flex justify-center bg-slate-905">
+              <div className="w-full overflow-auto p-2 flex justify-center bg-slate-900">
                 <div 
                   ref={hdCardsRef}
-                  className="bg-slate-900 p-8 rounded-2xl border-2 border-slate-700 font-sans text-right text-white relative shadow-2xl shrink-0"
-                  style={{ width: '900px', minWidth: '900px', direction: 'rtl', boxSizing: 'border-box' }}
+                  className="bg-white p-6 rounded-3xl border border-slate-200 font-sans text-right text-slate-800 relative shadow-2xl shrink-0"
+                  style={{ width: '600px', minWidth: '600px', direction: 'rtl', boxSizing: 'border-box' }}
                 >
-                  {/* Grid of the exactly Five Cards with spectacular clean design */}
-                  <div className="grid grid-cols-5 gap-3.5 font-sans">
+                  <div className="text-center mb-6">
+                    <h2 className="text-xl font-black text-slate-800">ملخص حساب المشتريات</h2>
+                    <p className="text-sm font-bold text-slate-500 mt-1">{activeMerch === 'baqy' ? 'البيان' : 'سمسم'}</p>
+                    <p className="text-xs text-slate-400 mt-1 font-mono">{new Date().toLocaleDateString('ar-LY')}</p>
+                  </div>
+                  {/* Stack of the exactly Five Cards with spectacular clean design */}
+                  <div className="grid grid-cols-6 gap-4 font-sans">
                     
                     {/* Card 1 */}
-                    <div className="bg-slate-950 border-2 border-slate-700 rounded-xl p-5 flex flex-col justify-between text-center min-h-[120px] shadow-lg">
-                      <div>
-                        <span className="text-slate-300 font-black text-xs block mb-3 text-center border-b border-slate-800 pb-2">📝 1. القيمة السابقة</span>
-                        <span className="font-mono text-xl font-extrabold text-white block mt-1 tracking-wide">
-                          {prevBalance.toLocaleString()} <span className="text-xs text-slate-400 font-bold">د.ل</span>
-                        </span>
-                      </div>
+                    <div className="col-span-2 bg-white border border-slate-200/70 rounded-2xl p-4 flex flex-col justify-center shadow-sm">
+                      <span className="text-slate-500 font-bold text-xs shrink-0 mb-2">📝 1. القيمة السابقة</span>
+                      <span className="font-mono text-xl font-extrabold text-slate-800 tracking-wide text-left overflow-hidden text-ellipsis">
+                        {prevBalance.toLocaleString()} <span className="text-xs text-slate-400 font-bold">د.ل</span>
+                      </span>
                     </div>
 
                     {/* Card 2 */}
-                    <div className="bg-slate-950 border-2 border-amber-600/85 rounded-xl p-5 flex flex-col justify-between text-center min-h-[120px] shadow-lg">
-                      <div>
-                        <span className="text-amber-300 font-black text-xs block mb-3 text-center border-b border-amber-950 pb-2">⚡ 2. إجمالي الشغل</span>
-                        <span className="font-mono text-xl font-extrabold text-amber-400 block mt-1 tracking-wide animate-none">
-                          {totalTodayWork.toLocaleString()} <span className="text-xs text-amber-500 font-bold">د.ل</span>
-                        </span>
-                      </div>
+                    <div className="col-span-2 bg-white border-t-2 border-slate-200 border-t-emerald-400 rounded-2xl p-4 flex flex-col justify-center shadow-sm">
+                      <span className="text-emerald-700/80 font-bold text-xs shrink-0 mb-2">⚡ 2. إجمالي الشغل</span>
+                      <span className="font-mono text-xl font-extrabold text-emerald-600 tracking-wide text-left overflow-hidden text-ellipsis">
+                        {totalTodayWork.toLocaleString()} <span className="text-xs text-emerald-400 font-bold">د.ل</span>
+                      </span>
                     </div>
 
                     {/* Card 3 */}
-                    <div className="bg-slate-950 border-2 border-emerald-600/85 rounded-xl p-5 flex flex-col justify-between text-center min-h-[120px] shadow-lg">
-                      <div>
-                        <span className="text-emerald-300 font-black text-xs block mb-3 text-center border-b border-emerald-950 pb-2">🟢 3. القيمة المسددة</span>
-                        <span className="font-mono text-xl font-extrabold text-emerald-400 block mt-1 tracking-wide">
-                          {totalPaidToday.toLocaleString()} <span className="text-xs text-emerald-500 font-bold">د.ل</span>
-                        </span>
-                      </div>
+                    <div className="col-span-2 bg-white border-t-2 border-slate-200 border-t-rose-400 rounded-2xl p-4 flex flex-col justify-center shadow-sm">
+                      <span className="text-rose-700/80 font-bold text-xs shrink-0 mb-2">🟢 3. إجمالي المسددة</span>
+                      <span className="font-mono text-xl font-extrabold text-rose-600 tracking-wide text-left overflow-hidden text-ellipsis">
+                        {totalPaidToday.toLocaleString()} <span className="text-xs text-rose-400 font-bold">د.ل</span>
+                      </span>
                     </div>
 
                     {/* Card 4 */}
-                    <div className="bg-slate-950 border-2 border-indigo-600 rounded-xl p-5 flex flex-col justify-between text-center min-h-[120px] shadow-lg">
-                      <div>
-                        <span className="text-indigo-300 font-black text-xs block mb-3 text-center border-b border-indigo-950 pb-2">🎒 4. الباقي من الشغل</span>
-                        <span className="font-mono text-xl font-extrabold text-indigo-400 block mt-1 tracking-wide">
-                          {remainingTotalOwed.toLocaleString()} <span className="text-xs text-indigo-400 font-bold">د.ل</span>
-                        </span>
-                      </div>
+                    <div className="col-span-3 bg-white border-t-2 border-slate-200 border-t-indigo-500 rounded-2xl p-4 flex flex-col justify-center shadow-sm relative overflow-hidden">
+                      <div className="absolute inset-0 bg-indigo-50/50 outline-none"></div>
+                      <span className="text-indigo-700 font-bold text-xs relative z-10 shrink-0 mb-2">🎒 4. الباقي من الشغل</span>
+                      <span className="font-mono text-2xl font-black text-indigo-900 tracking-wide relative z-10 text-left overflow-hidden text-ellipsis">
+                        {remainingTotalOwed.toLocaleString()} <span className="text-xs text-indigo-400 font-bold">د.ل</span>
+                      </span>
                     </div>
 
                     {/* Card 5 */}
-                    <div className="bg-slate-950 border-2 border-purple-600 rounded-xl p-5 flex flex-col justify-between text-center min-h-[120px] shadow-lg">
-                      <div>
-                        <span className="text-purple-300 font-black text-xs block mb-3 text-center border-b border-purple-950 pb-2">🇪🇬 5. الباقية مصري</span>
-                        <span className="font-mono text-xl font-extrabold text-purple-400 block mt-1 tracking-wide">
-                          {remainingEgyptianValue.toLocaleString()} <span className="text-xs text-purple-400 font-bold">جنيه</span>
-                        </span>
-                      </div>
+                    <div className="col-span-3 bg-white border-t-2 border-slate-200 border-t-purple-500 rounded-2xl p-4 flex flex-col justify-center shadow-sm relative overflow-hidden">
+                      <div className="absolute inset-0 bg-purple-50/50 outline-none"></div>
+                      <span className="text-purple-700 font-bold text-xs relative z-10 shrink-0 mb-2">🇪🇬 5. الباقية مصري</span>
+                      <span className="font-mono text-2xl font-black text-purple-900 tracking-wide relative z-10 text-left overflow-hidden text-ellipsis">
+                        {remainingEgyptianValue.toLocaleString()} <span className="text-xs text-purple-400 font-bold">EGP</span>
+                      </span>
                     </div>
 
                   </div>
@@ -1111,6 +1162,160 @@ export default function PurchasesModule({ state, onUpdateState, onOpenExporter }
               >
                 إلغاء التراجع
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Purchases Confirmation Modal */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-4 z-[9999]" dir="rtl">
+          <div className="bg-white border-2 border-rose-500 rounded-3xl p-6 max-w-md w-full shadow-2xl relative text-right">
+            <h3 className="font-extrabold text-rose-600 text-lg mb-2 flex items-center gap-2">
+              <Trash2 className="w-5 h-5" />
+              <span>تحذير: تصفير قسم المشتريات بالكامل ⚠️</span>
+            </h3>
+            <p className="text-sm font-semibold text-slate-600 mb-6 leading-relaxed">
+              هل أنت متأكد من تصفير وإفراغ جميع بيانات وحركة المخزن (قسم المشتريات) بالكامل وبناء مخزن جديد من الصفر؟ <strong className="text-rose-600">لا يمكن التراجع عن هذا الإجراء!</strong>
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={confirmResetPurchases}
+                className="bg-rose-600 hover:bg-rose-700 text-white w-full text-sm font-black py-3 px-4 rounded-xl transition cursor-pointer flex items-center justify-center"
+              >
+                الموافقة والتصفير بالكامل الآن
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowResetConfirm(false)}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 w-full text-sm font-bold py-3 px-4 rounded-xl transition cursor-pointer"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* History Modal */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex justify-center items-center z-[9999] p-4" dir="rtl">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-200">
+            <div className="bg-slate-50 border-b border-slate-200 p-4 flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center text-purple-700">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-lg text-slate-800">السجل التاريخي للمعاملات (الأرشيف الآمن)</h3>
+                  <p className="text-xs text-slate-500 font-bold">هذه المعاملات غير قابلة للحذف ويمكن الرجوع إليها بالبحث.</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowHistoryModal(false)}
+                className="w-8 h-8 flex items-center justify-center bg-slate-200 hover:bg-rose-100 hover:text-rose-600 text-slate-500 rounded-lg cursor-pointer transition-colors"
+                title="إغلاق الشاشة"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <div className="p-4 bg-white border-b border-slate-100 flex items-center gap-4 shrink-0">
+              <div className="flex-1 max-w-sm">
+                <input 
+                  type="date"
+                  value={historyFilterDate}
+                  onChange={e => setHistoryFilterDate(e.target.value)}
+                  className="w-full border-2 border-slate-200 rounded-xl px-4 py-2 font-mono text-slate-800 focus:outline-none focus:border-purple-500 transition-colors"
+                />
+              </div>
+              {historyFilterDate && (
+                <button 
+                  onClick={() => setHistoryFilterDate('')}
+                  className="text-xs font-bold text-slate-400 hover:text-slate-700 underline cursor-pointer"
+                >
+                  إلغاء تصفية التاريخ
+                </button>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 bg-slate-50/50 space-y-4">
+              {historyRecords
+                .filter(rec => !historyFilterDate || rec.date.startsWith(historyFilterDate))
+                .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                .map((rec) => (
+                <div key={rec.id} className="bg-white border border-slate-200 rounded-2xl shadow-sm p-4 hover:shadow-md transition-shadow">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-3">
+                      <span className="bg-purple-600 text-white text-xs font-bold px-2 py-1 rounded-md">
+                        {rec.merchantId === 'baqy' ? 'البيان' : 'سمسم'}
+                      </span>
+                      <span className="font-mono text-sm font-bold text-slate-600 bg-slate-100 px-2 rounded-md">
+                        {new Date(rec.date).toLocaleDateString('ar-LY')} - {new Date(rec.date).toLocaleTimeString('ar-LY', {hour: '2-digit', minute:'2-digit'})}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs font-bold text-slate-600 flex-wrap">
+                      <div>سابقة د.ل: <span className="font-mono text-slate-900">{rec.previousBalance.toLocaleString()}</span></div>
+                      <div>باقي د.ل: <span className="font-mono text-indigo-700">{rec.remainingTotalOwed.toLocaleString()}</span></div>
+                      <div>إجمالي المستهلكين: <span className="font-mono text-rose-700">{rec.consumerValue?.toLocaleString() || 0}</span> ج.م</div>
+                    </div>
+                  </div>
+                  
+                  {rec.rows && rec.rows.length > 0 ? (
+                    <div className="overflow-x-auto border border-slate-200 rounded-xl mb-3">
+                      <table className="w-full text-right text-[10px] sm:text-xs">
+                        <thead className="bg-slate-100 text-slate-600">
+                          <tr>
+                            <th className="p-2 border-b border-slate-200 pr-3">البيان</th>
+                            <th className="p-2 border-b border-slate-200 text-center">القيمة (ج.م / يورو)</th>
+                            <th className="p-2 border-b border-slate-200 text-center">العملية</th>
+                            <th className="p-2 border-b border-slate-200 text-center">الناتج د.ل</th>
+                            <th className="p-2 border-b border-slate-200 text-center">المسدد د.ل</th>
+                            <th className="p-2 border-b border-slate-200 text-center">باقي القيد د.ل</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-mono">
+                          {rec.rows.map((r: any) => (
+                            <tr key={r.id} className="hover:bg-slate-50/50">
+                              <td className="p-2 pr-3 text-slate-800 font-sans font-bold text-xs">{r.type || 'غير محدد'}</td>
+                              <td className="p-2 text-slate-600 text-center">{Number(r.value || 0).toLocaleString()}</td>
+                              <td className="p-2 text-slate-500 text-[10px] text-center">{r.op === 'multiply' ? 'ضرب فى' : 'قسمة على'} {r.rate}</td>
+                              <td className="p-2 text-indigo-700 font-bold text-center">{Number(r.result || 0).toLocaleString()}</td>
+                              <td className="p-2 text-emerald-600 font-bold text-center">{Number(r.paid || 0).toLocaleString()}</td>
+                              <td className="p-2 text-rose-600 font-bold text-center">{Number(r.remaining || 0).toLocaleString()}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                     <div className="text-center text-xs font-bold text-slate-400 py-3 mb-3 border border-dashed border-slate-200 rounded-xl">لا توجد عمليات مسجلة للجدول.</div>
+                  )}
+
+                  {rec.consumerRows && rec.consumerRows.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2 overflow-x-auto pb-1 bg-purple-50/50 p-2 rounded-xl">
+                      <div className="text-xs font-bold text-purple-900 w-full mb-1">تفاصيل مستهلكي فودافون كاش:</div>
+                      {rec.consumerRows.map((cr: any) => (
+                        <div key={cr.id} className="bg-white border border-purple-200 shadow-sm rounded-lg flex items-center gap-2 px-3 py-1.5 text-xs font-bold text-purple-800 whitespace-nowrap">
+                          <span>{cr.name}:</span>
+                          <span className="font-mono text-purple-600">{Number(cr.amount || 0).toLocaleString()} ج.م</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+              
+              {historyRecords.filter(rec => !historyFilterDate || rec.date.startsWith(historyFilterDate)).length === 0 && (
+                <div className="text-center py-20">
+                  <div className="text-slate-300 mb-2 mt-4 inline-flex items-center justify-center bg-white p-6 rounded-full shadow-sm"><FileText className="w-10 h-10 text-slate-300" /></div>
+                  <h4 className="text-sm font-bold text-slate-500 mt-2">لا توجد سجلات ترحيلات مطابقة لتاريخ البحث.</h4>
+                </div>
+              )}
+            </div>
+            <div className="p-4 bg-slate-100 border-t border-slate-200 text-center shrink-0">
+               <span className="text-[10px] font-bold text-slate-400">جميع القيود مؤرشفة ولا يمكن تعديلها أو حذفها للحفاظ على شفافية النظام المحاسبي.</span>
             </div>
           </div>
         </div>

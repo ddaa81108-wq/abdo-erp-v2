@@ -1,19 +1,37 @@
 import React, { useState } from 'react';
-import { FileText, Search, Calendar, ArrowRightLeft, ArrowUpRight, ArrowDownLeft, Landmark, ShoppingBag, FolderSymlink } from 'lucide-react';
+import { FileText, Search, Calendar, ArrowRightLeft, ArrowUpRight, ArrowDownLeft, Landmark, ShoppingBag, FolderSymlink, X } from 'lucide-react';
 import { ERPState } from '../types';
 
 interface TransactionLogModuleProps {
   state: ERPState;
   onOpenExporter: (section: string, metrics: any, headers: string[], rows: any[][]) => void;
+  onUpdateState?: (newState: ERPState) => void;
 }
 
-export default function TransactionLogModule({ state, onOpenExporter }: TransactionLogModuleProps) {
+export default function TransactionLogModule({ state, onOpenExporter, onUpdateState }: TransactionLogModuleProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'customer' | 'company' | 'merchant' | 'treasury'>('all');
 
+  const handleDeleteTransaction = (t: any) => {
+    if (!onUpdateState) return;
+
+    let newState = { ...state };
+    if (t.source === 'customer') {
+      newState.debtTransactions = (state.debtTransactions || []).map(tx => tx.id === t.id ? { ...tx, isDeleted: true } : tx);
+    } else if (t.source === 'company') {
+      newState.companyTransactions = (state.companyTransactions || []).map(tx => tx.id === t.id ? { ...tx, isDeleted: true } : tx);
+    } else if (t.source === 'merchant') {
+      newState.merchantTransactions = (state.merchantTransactions || []).map(tx => tx.id === t.id ? { ...tx, isDeleted: true } : tx);
+    } else if (t.source === 'treasury') {
+      newState.treasuryTransactions = (state.treasuryTransactions || []).map(tx => tx.id === t.id ? { ...tx, isDeleted: true } : tx);
+    }
+    
+    onUpdateState(newState);
+  };
+
   // Gather transactions from all modules
   // 1. Customer debt transactions
-  const customerTxs = (state.debtTransactions || []).map(t => {
+  const customerTxs = (state.debtTransactions || []).filter(t => !t.isDeleted).map(t => {
     const cust = (state.customers || []).find(c => c.id === t.customerId);
     return {
       id: t.id,
@@ -30,7 +48,7 @@ export default function TransactionLogModule({ state, onOpenExporter }: Transact
   });
 
   // 2. Company transactions
-  const companyTxs = (state.companyTransactions || []).map(t => {
+  const companyTxs = (state.companyTransactions || []).filter(t => !t.isDeleted).map(t => {
     const comp = (state.companies || []).find(c => c.id === t.companyId);
     return {
       id: t.id,
@@ -47,7 +65,7 @@ export default function TransactionLogModule({ state, onOpenExporter }: Transact
   });
 
   // 3. Merchant transactions
-  const merchantTxs = (state.merchantTransactions || []).map(t => {
+  const merchantTxs = (state.merchantTransactions || []).filter(t => !t.isDeleted).map(t => {
     const merch = (state.merchants || []).find(m => m.id === t.merchantId);
     return {
       id: t.id,
@@ -64,7 +82,7 @@ export default function TransactionLogModule({ state, onOpenExporter }: Transact
   });
 
   // 4. Treasury transactions
-  const treasuryTxs = (state.treasuryTransactions || []).map(t => {
+  const treasuryTxs = (state.treasuryTransactions || []).filter(t => !t.isDeleted).map(t => {
     const label = t.type === 'in' ? 'مقبوضات واردة للخزينة' : 'مدفوعات منصرفة من الخزينة';
     let party = 'الخزينة العامة';
     if (t.source === 'customer_payment') party = 'تحصيل زبون';
@@ -106,7 +124,7 @@ export default function TransactionLogModule({ state, onOpenExporter }: Transact
   // Export to Image exporter
   const handleExportClick = () => {
     const headers = ['تاريخ الحركة', 'النوع / التصنيف', 'الطرف المعني', 'القيمة المالية', 'الملاحظات والمرجعية'];
-    const rows = allTxs.slice(0, 50).map(t => [
+    const rows = allTxs.map(t => [
       new Date(t.date).toLocaleDateString('ar-LY'),
       t.type,
       t.partyName,
@@ -213,6 +231,7 @@ export default function TransactionLogModule({ state, onOpenExporter }: Transact
                   <th className="p-3 w-48">الطرف ذو العلاقة</th>
                   <th className="p-3">تفاصيل المعاملة والبيان</th>
                   <th className="p-3 w-32 text-left">القيمة المالية</th>
+                  <th className="p-3 w-16 text-center">حذف</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -238,6 +257,15 @@ export default function TransactionLogModule({ state, onOpenExporter }: Transact
                         <span className={`font-black text-xs ${t.isPlus ? 'text-amber-600' : 'text-emerald-700'}`}>
                           {t.isPlus ? '+' : '-'}{t.amount.toLocaleString()} د.ل
                         </span>
+                      </td>
+                      <td className="p-3 text-center">
+                        <button
+                          onClick={() => handleDeleteTransaction(t)}
+                          className="bg-rose-50 hover:bg-rose-100 text-rose-600 p-1 rounded-md transition-all cursor-pointer hover:scale-105 inline-block"
+                          title="مسح ونقل للأرشيف ❌"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   );

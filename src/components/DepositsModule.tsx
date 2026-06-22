@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Landmark, ArrowRightLeft, Shield, AlertCircle, Plus, Trash2, Search, Coins, RefreshCw, FileText, ChevronDown, ChevronUp, CheckCircle, UserCheck, Receipt, DollarSign, Image } from 'lucide-react';
+import { Landmark, ArrowRightLeft, Shield, AlertCircle, Plus, Trash2, Search, Coins, RefreshCw, FileText, ChevronDown, ChevronUp, CheckCircle, UserCheck, Receipt, DollarSign, Image, X } from 'lucide-react';
 import { ERPState, TrustDeposit, TrustDepositTx, TreasuryTransaction } from '../types';
 
 interface DepositsModuleProps {
@@ -32,7 +32,7 @@ export default function DepositsModule({ state, onUpdateState, onOpenExporter }:
   const [actionTargetId, setActionTargetId] = useState('');
 
   const generateReferenceNo = () => {
-    const totalTxsCount = state.debtTransactions.length + state.companyTransactions.length + state.treasuryTransactions.length;
+    const totalTxsCount = state.debtTransactions.length + state.companyTransactions.length + 50;
     const padding = String(totalTxsCount + 121).padStart(6, '0');
     return `TX-2026-${padding}`;
   };
@@ -65,6 +65,15 @@ export default function DepositsModule({ state, onUpdateState, onOpenExporter }:
       alert('الرجاء إدخال اسم العميل وقيمة أمانة صحيحة أكبر من صفر بالدينار الليبي.');
       return;
     }
+    
+    // Check for duplicates
+    const isDuplicate = state.trustDeposits.some(
+      d => !d.isDeleted && d.status === 'held' && d.customerName.trim().toLowerCase() === name.toLowerCase()
+    );
+    if (isDuplicate) {
+      alert(`الاسم "${name}" موجود مسبقاً في قسم الأمانات المفتوحة. يرجى البحث عنه وإضافة الرصيد إليه مباشرة بدلاً من تكرار الاسم.`);
+      return;
+    }
 
     const refNo = generateReferenceNo();
     const nowStr = new Date().toISOString();
@@ -94,26 +103,12 @@ export default function DepositsModule({ state, onUpdateState, onOpenExporter }:
       ]
     };
 
-    // Auto post to Treasury
-    const updatedTreasury = [...state.treasuryTransactions];
-    updatedTreasury.push({
-      id: `tx_t_dep_${Date.now()}`,
-      type: 'in', // وارد للخزينة
-      amount: lydVal,
-      currency: 'د.ل',
-      conversionRate: 1.0,
-      date: nowStr,
-      referenceNo: refNo,
-      source: 'deposit_escrow',
-      sourceId: newId,
-      description: `استلام وقبول أمانة نقدية: العميل ${name} بمرجع مستند ${refNo}`,
-      createdAt: nowStr
-    });
+    const updatedDeposits = [...state.trustDeposits];
+    updatedDeposits.push(newDeposit);
 
     onUpdateState({
       ...state,
-      trustDeposits: [...state.trustDeposits, newDeposit],
-      treasuryTransactions: updatedTreasury
+      trustDeposits: updatedDeposits
     });
 
     // Reset inputs
@@ -165,26 +160,9 @@ export default function DepositsModule({ state, onUpdateState, onOpenExporter }:
       note: actionNote || dep.note
     };
 
-    // Reflect on general Treasury
-    const updatedTreasury = [...state.treasuryTransactions];
-    updatedTreasury.push({
-      id: `tx_t_dep_add_${Date.now()}`,
-      type: 'in', // وارد
-      amount: amount,
-      currency: 'د.ل',
-      conversionRate: 1.0,
-      date: nowStr,
-      referenceNo: refNo,
-      source: 'deposit_escrow',
-      sourceId: id,
-      description: `زيادة رصيد أمانة العميل: ${dep.customerName} بقيمة ${amount.toLocaleString()} د.ل`,
-      createdAt: nowStr
-    });
-
     onUpdateState({
       ...state,
-      trustDeposits: updatedDeposits,
-      treasuryTransactions: updatedTreasury
+      trustDeposits: updatedDeposits
     });
 
     // Reset action state
@@ -235,25 +213,9 @@ export default function DepositsModule({ state, onUpdateState, onOpenExporter }:
       note: actionNote || dep.note
     };
 
-    // Reflect on Treasury
-    const updatedTreasury = [...state.treasuryTransactions];
-    updatedTreasury.push({
-      id: `tx_t_dep_withdraw_${Date.now()}`,
-      type: 'out', // صادر من الخزينة
-      amount: amount,
-      currency: 'د.ل',
-      conversionRate: 1.0,
-      date: nowStr,
-      referenceNo: refNo,
-      source: 'manual_withdraw',
-      description: `استرداد وسحب جزء من أمانة العميل: ${dep.customerName} بقيمة ${amount.toLocaleString()} د.ل`,
-      createdAt: nowStr
-    });
-
     onUpdateState({
       ...state,
-      trustDeposits: updatedDeposits,
-      treasuryTransactions: updatedTreasury
+      trustDeposits: updatedDeposits
     });
 
     resetActionForm();
@@ -319,27 +281,9 @@ export default function DepositsModule({ state, onUpdateState, onOpenExporter }:
       history: [...currentHistory, newSubTx]
     };
 
-    // Refelct on Treasury (الخزينة) AS REQUESTED BY CUSTOMER:
-    // "ال 5,000 اللي تحولوا بالمصري هيروحوا الخزينة برضه اللي هي الفلوس المصرية حط عليها بالسالب. وهنا في الخزينة تحول لقيمة بالليبي في الخزينة عشان تخش عليا بالسالب"
-    // So we record a transaction in treasury of type 'out' with amount = lydAmount (e.g. 5,000 LYD) which counts as cash-out / negative adjustment on the cashier!
-    const updatedTreasury = [...state.treasuryTransactions];
-    updatedTreasury.push({
-      id: `tx_t_dep_conv_out_${Date.now()}`,
-      type: 'out', // صادر / تأثير سالب على الخزنة
-      amount: lydAmount,
-      currency: 'د.ل',
-      conversionRate: 1.0,
-      date: nowStr,
-      referenceNo: refNo,
-      source: 'manual_withdraw',
-      description: `تسوية تحويل عهدة أمانة العميل: ${dep.customerName} إلى مصري بقيمة دفتيرية -${lydAmount.toLocaleString()} د.ل (ما يعادل بالصرف ${calculatedEgp.toLocaleString()} جنيه)`,
-      createdAt: nowStr
-    });
-
     onUpdateState({
       ...state,
-      trustDeposits: updatedDeposits,
-      treasuryTransactions: updatedTreasury
+      trustDeposits: updatedDeposits
     });
 
     resetActionForm();
@@ -512,27 +456,9 @@ export default function DepositsModule({ state, onUpdateState, onOpenExporter }:
       history: [...getHistory(dep), newSubTx]
     };
 
-    // Reflect on Treasury
-    const updatedTreasury = [...state.treasuryTransactions];
-    if (amountLydVal > 0) {
-      updatedTreasury.push({
-        id: `tx_t_egypt_trans_${Date.now()}`,
-        type: 'out', // صادر
-        amount: amountLydVal,
-        currency: 'د.ل',
-        conversionRate: 1.0,
-        date: nowStr,
-        referenceNo: refNo,
-        source: 'manual_withdraw',
-        description: `حوالة مرسلة إلى مصر خصماً من أمانة العميل: ${dep.customerName} بقيمة ${amountLydVal.toLocaleString()} د.ل`,
-        createdAt: nowStr
-      });
-    }
-
     onUpdateState({
       ...state,
-      trustDeposits: updatedDeposits,
-      treasuryTransactions: updatedTreasury
+      trustDeposits: updatedDeposits
     });
 
     resetActionForm();
@@ -643,9 +569,9 @@ export default function DepositsModule({ state, onUpdateState, onOpenExporter }:
     }
   };
 
-  // Direct complete delete - upgraded to soft delete to trash can with confirm trigger
+  // Direct complete delete - upgraded to soft delete to trash can without confirm trigger
   const handleDeleteDeposit = (id: string) => {
-    setDeleteConfirmId(id);
+    executeDeleteDeposit(id);
   };
 
   const executeDeleteDeposit = (id: string) => {
@@ -930,7 +856,7 @@ export default function DepositsModule({ state, onUpdateState, onOpenExporter }:
                             className="bg-rose-50 hover:bg-rose-100 text-rose-600 p-1 rounded-md transition-all cursor-pointer shrink-0 hover:scale-105"
                             title="حذف ونقل للأرشيف ❌"
                           >
-                            <span className="text-xs font-black">✕</span>
+                            <X className="w-3.5 h-3.5" />
                           </button>
                           <div className="w-2 h-2 rounded-full bg-indigo-600" />
                           <h4 className="font-extrabold text-slate-900 text-sm">{d.customerName}</h4>

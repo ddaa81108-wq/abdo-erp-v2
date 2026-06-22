@@ -6,24 +6,18 @@ interface AlertCenterProps {
   state: ERPState;
   onNavigateToSection: (section: string) => void;
   onPostPurchaseToTreasury?: (purchaseId: string) => void;
-  onPostDebtPaymentToTreasury?: (txId: string) => void;
 }
 
 export default function AlertCenter({
   state,
   onNavigateToSection,
-  onPostPurchaseToTreasury,
-  onPostDebtPaymentToTreasury
+  onPostPurchaseToTreasury
 }: AlertCenterProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   // Compute Warnings Dynamically:
   
-  // 1. Negative Treasury Balance
-  const totalTreasury = state.treasuryTransactions.reduce((acc, curr) => {
-    return curr.type === 'in' ? acc + curr.amount : acc - curr.amount;
-  }, 0);
-  const isTreasuryNegative = totalTreasury < 0;
+  const isTreasuryNegative = false;
 
   // 2. Purchases without exchange / transfer rate:
   // Foreign purchases (not LYD / 'د.ل') where conversionRate is missing, 0, or undefined
@@ -33,12 +27,6 @@ export default function AlertCenter({
     return isForeign && hasNoValidRate;
   });
 
-  // 3. Unposted collections/payments to Treasury
-  // Customer payments marked as 'payment' and postedToTreasury = false
-  const unpostedPayments = state.debtTransactions.filter(
-    tx => tx.type === 'payment' && !tx.postedToTreasury
-  );
-
   // 4. Overdue/Delayed custom cycles: Active customer cycles with no transactions for last 10 days, or with long standing high balance
   const activeCustomers = state.customers.filter(c => {
     const activeCycle = state.cycles.find(cy => cy.customerId === c.id && cy.status === 'active');
@@ -47,8 +35,7 @@ export default function AlertCenter({
 
   const alertsCount = 
     (isTreasuryNegative ? 1 : 0) + 
-    invalidRatePurchases.length + 
-    unpostedPayments.length;
+    invalidRatePurchases.length;
 
   if (alertsCount === 0 && !isTreasuryNegative) {
     return (
@@ -87,71 +74,6 @@ export default function AlertCenter({
 
       {isOpen && (
         <div className="px-4 pb-4 pt-1 border-t border-amber-100 bg-white grid grid-cols-1 md:grid-cols-3 gap-3">
-          {/* Treasury Alert */}
-          {isTreasuryNegative && (
-            <div className="bg-rose-50 border border-rose-100 rounded-lg p-3 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center gap-2 text-rose-800 font-bold text-xs mb-1">
-                  <ShieldAlert className="w-4 h-4 text-rose-600" />
-                  <span>عجز حاد: رصيد الخزينة بالسالب</span>
-                </div>
-                <p className="text-[11px] text-rose-700 leading-relaxed mb-2">
-                  تحذير أمني: مجموع الحسابات الصادرة يتجاوز الوارد الفعلي بالخزينة. الرصيد الإجمالي الحالي هو: 
-                  <span className="font-mono font-bold mx-1 text-rose-950">{totalTreasury.toLocaleString()} د.ل</span>
-                </p>
-              </div>
-              <button 
-                onClick={() => onNavigateToSection('treasury')}
-                className="w-full text-center bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold py-1.5 px-3 rounded-md transition-all self-end"
-              >
-                جرد ومراجعة الخزينة فوراً 💰
-              </button>
-            </div>
-          )}
-
-          {/* Unposted Collections Alert */}
-          {unpostedPayments.length > 0 && (
-            <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center gap-2 text-amber-800 font-bold text-xs mb-1">
-                  <Flame className="w-4 h-4 text-amber-600 animate-pulse" />
-                  <span>دفعات تحصيل غير مرحلة</span>
-                </div>
-                <p className="text-[11px] text-amber-700 leading-relaxed mb-2">
-                  يوجد {unpostedPayments.length} سداد ديون من عملاء تمت برمجته في الحسابات لكن لم يتم إدراجه في الخزينة بعد.
-                </p>
-                <div className="space-y-1.5 max-h-24 overflow-y-auto mb-2 pr-1">
-                  {unpostedPayments.map(p => {
-                    const cust = state.customers.find(c => c.id === p.customerId);
-                    return (
-                      <div key={p.id} className="bg-white/80 border border-amber-100 px-2 py-1 rounded text-[10px] flex items-center justify-between leading-none font-mono">
-                        <span className="truncate max-w-[100px] text-slate-800 font-sans">{cust?.name}</span>
-                        <span className="font-bold text-emerald-700">{p.amount.toLocaleString()} {p.currency}</span>
-                        {onPostDebtPaymentToTreasury && (
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onPostDebtPaymentToTreasury(p.id);
-                            }}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] px-1.5 py-0.5 rounded"
-                          >
-                            ترحيل ✓
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-              <button 
-                onClick={() => onNavigateToSection('debts')}
-                className="w-full text-center bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold py-1.5 px-3 rounded-md transition-all"
-              >
-                كشف ديون العملاء النشطين
-              </button>
-            </div>
-          )}
-
           {/* Missing Conversion Rates Alert */}
           {invalidRatePurchases.length > 0 && (
             <div className="bg-sky-50 border border-sky-100 rounded-lg p-3 flex flex-col justify-between">

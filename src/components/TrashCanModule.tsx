@@ -9,17 +9,24 @@ interface TrashCanModuleProps {
 
 export default function TrashCanModule({ state, onUpdateState }: TrashCanModuleProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'customers' | 'companies' | 'merchants'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'customers' | 'companies'>('all');
   
   // State for inline deletion confirmation to bypass window.confirm
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [confirmingEmptyTrash, setConfirmingEmptyTrash] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Find all deleted records
   const deletedCustomers = (state.customers || []).filter(c => c.isDeleted);
   const deletedCompanies = (state.companies || []).filter(c => c.isDeleted);
-  const deletedMerchants = (state.merchants || []).filter(m => m.isDeleted);
   const deletedDeposits = (state.trustDeposits || []).filter(d => d.isDeleted);
+  
+  const deletedTxs = [
+    ...(state.debtTransactions || []).filter(t => t.isDeleted).map(t => ({ ...t, source: 'customer' as const, name: `عملية ديون للزبون (${t.amount} د.ل)` })),
+    ...(state.companyTransactions || []).filter(t => t.isDeleted).map(t => ({ ...t, source: 'company' as const, name: `فاتورة / دفعة مورد (${t.amount} د.ل)` })),
+    ...(state.merchantTransactions || []).filter(t => t.isDeleted).map(t => ({ ...t, source: 'merchant' as const, name: `قيد ذمة تاجر (${t.amount} د.ل)` })),
+    ...(state.treasuryTransactions || []).filter(t => t.isDeleted).map(t => ({ ...t, source: 'treasury' as const, name: `قيد وحركة خزينة مركزي (${t.amount} د.ل)` }))
+  ];
 
   const triggerNotification = (msg: string) => {
     setSuccessMessage(msg);
@@ -143,17 +150,67 @@ export default function TrashCanModule({ state, onUpdateState }: TrashCanModuleP
     triggerNotification('تم مسح وإتلاف حساب الأمانة نهائياً بنجاح! 🗑️');
   };
 
+  // Restore Transaction
+  const handleRestoreTransaction = (txItem: any) => {
+    let newState = { ...state };
+    if (txItem.source === 'customer') {
+      newState.debtTransactions = (state.debtTransactions || []).map(tx => tx.id === txItem.id ? { ...tx, isDeleted: false } : tx);
+    } else if (txItem.source === 'company') {
+      newState.companyTransactions = (state.companyTransactions || []).map(tx => tx.id === txItem.id ? { ...tx, isDeleted: false } : tx);
+    } else if (txItem.source === 'merchant') {
+      newState.merchantTransactions = (state.merchantTransactions || []).map(tx => tx.id === txItem.id ? { ...tx, isDeleted: false } : tx);
+    } else if (txItem.source === 'treasury') {
+      newState.treasuryTransactions = (state.treasuryTransactions || []).map(tx => tx.id === txItem.id ? { ...tx, isDeleted: false } : tx);
+    }
+    onUpdateState(newState);
+    triggerNotification('تم استرجاع العملية المحذوفة لسجل العمليات بنجاح! 👍');
+  };
+
+  // Permanent Delete Transaction
+  const handlePermanentDeleteTransaction = (txItem: any) => {
+    let newState = { ...state };
+    if (txItem.source === 'customer') {
+      newState.debtTransactions = (state.debtTransactions || []).filter(tx => tx.id !== txItem.id);
+    } else if (txItem.source === 'company') {
+      newState.companyTransactions = (state.companyTransactions || []).filter(tx => tx.id !== txItem.id);
+    } else if (txItem.source === 'merchant') {
+      newState.merchantTransactions = (state.merchantTransactions || []).filter(tx => tx.id !== txItem.id);
+    } else if (txItem.source === 'treasury') {
+      newState.treasuryTransactions = (state.treasuryTransactions || []).filter(tx => tx.id !== txItem.id);
+    }
+    onUpdateState(newState);
+    setConfirmingDeleteId(null);
+    triggerNotification('تم مسح وإتلاف العملية نهائياً من سجلات النظام! 🗑️');
+  };
+
+  // Empty Entire Trash
+  const handleEmptyTrash = () => {
+    onUpdateState({
+      ...state,
+      customers: (state.customers || []).filter(c => !c.isDeleted),
+      companies: (state.companies || []).filter(c => !c.isDeleted),
+      merchants: (state.merchants || []).filter(m => !m.isDeleted),
+      trustDeposits: (state.trustDeposits || []).filter(d => !d.isDeleted),
+      debtTransactions: (state.debtTransactions || []).filter(t => !t.isDeleted),
+      companyTransactions: (state.companyTransactions || []).filter(t => !t.isDeleted),
+      merchantTransactions: (state.merchantTransactions || []).filter(t => !t.isDeleted),
+      treasuryTransactions: (state.treasuryTransactions || []).filter(t => !t.isDeleted),
+    });
+    setConfirmingEmptyTrash(false);
+    triggerNotification('تم مسح وإفراغ جميع العناصر من سلة المهملات بنجاح! 🗑️');
+  };
+
   // Create unified feed for simple search and tab filtering
   const allTrashItems = [
-    ...deletedCustomers.map(c => ({ id: c.id, name: c.name, details: c.phone ? `تلفونه: ${c.phone}` : 'من غير تلفون', type: 'customer' as const, label: 'زبون / عميل 👥', color: 'bg-rose-50 text-rose-700 border-rose-150' })),
-    ...deletedCompanies.map(c => ({ id: c.id, name: c.name, details: c.contact ? `المسئول عنه: ${c.contact}` : 'من غير تفاصيل اتفاق', type: 'company' as const, label: 'مورد / شركة توريد 🏭', color: 'bg-amber-50 text-amber-700 border-amber-150' })),
-    ...deletedMerchants.map(m => ({ id: m.id, name: m.name, details: m.contact ? `تلفون التاجر: ${m.contact}` : 'من غير تفاصيل اتصال', type: 'merchant' as const, label: 'تاجر / زبون ذمم 👥', color: 'bg-purple-50 text-purple-700 border-purple-150' })),
-    ...deletedDeposits.map(d => ({ id: d.id, name: `أمانة العميل: ${d.customerName}`, details: `مرجع: ${d.referenceNo} | متبقي ليبي: ${d.amountLyd} د.ل | مصري: ${d.amountEgp} ج.م`, type: 'deposit' as const, label: 'سند أمانة جاري 🔒', color: 'bg-indigo-50 text-indigo-700 border-indigo-150' }))
+    ...deletedCustomers.map(c => ({ id: c.id, name: c.name, details: c.phone ? `تلفونه: ${c.phone}` : 'من غير تلفون', type: 'customer' as const, label: 'زبون / عميل 👥', color: 'bg-rose-50 text-rose-700 border-rose-150', itemRef: c })),
+    ...deletedCompanies.map(c => ({ id: c.id, name: c.name, details: c.contact ? `المسئول عنه: ${c.contact}` : 'من غير تفاصيل اتفاق', type: 'company' as const, label: 'مورد / شركة توريد 🏭', color: 'bg-amber-50 text-amber-700 border-amber-150', itemRef: c })),
+    ...deletedDeposits.map(d => ({ id: d.id, name: `أمانة العميل: ${d.customerName}`, details: `مرجع: ${d.referenceNo} | متبقي ليبي: ${d.amountLyd} د.ل | مصري: ${d.amountEgp} ج.م`, type: 'deposit' as const, label: 'سند أمانة جاري 🔒', color: 'bg-indigo-50 text-indigo-700 border-indigo-150', itemRef: d })),
+    ...deletedTxs.map(t => ({ id: t.id, name: t.name, details: `المرجع: ${t.referenceNo || 'بدون'} | ${new Date(t.date || t.createdAt).toLocaleDateString('ar-LY')} (${t.note || t.description || 'بدون ملاحظة'})`, type: 'transaction' as const, label: 'عملية / قيد ملغي 📝', color: 'bg-slate-50 text-slate-700 border-slate-200', itemRef: t }))
   ].filter(item => {
     // Tab filter
     if (activeTab === 'customers' && item.type !== 'customer') return false;
     if (activeTab === 'companies' && item.type !== 'company') return false;
-    if (activeTab === 'merchants' && item.type !== 'merchant') return false;
+    if (activeTab as any === 'transactions' && item.type !== 'transaction') return false;
 
     // Search query Matching
     return item.name.toLowerCase().includes(searchQuery.toLowerCase()) || item.details.toLowerCase().includes(searchQuery.toLowerCase());
@@ -204,12 +261,37 @@ export default function TrashCanModule({ state, onUpdateState }: TrashCanModuleP
             <Search className="absolute right-3 top-2.5 w-4 h-4 text-slate-400" />
           </div>
 
+          {confirmingEmptyTrash ? (
+            <div className="flex items-center gap-1.5 shrink-0 bg-rose-50 p-1 rounded-xl border border-rose-200 animate-fadeIn">
+              <span className="text-[10px] font-black text-rose-800 px-2">تأكيد الإفراغ نهائياً؟</span>
+              <button
+                onClick={handleEmptyTrash}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] rounded-lg transition-all cursor-pointer"
+              >نعم🚨</button>
+              <button
+                onClick={() => setConfirmingEmptyTrash(false)}
+                className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-[10px] rounded-lg transition-all cursor-pointer"
+              >إلغاء</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmingEmptyTrash(true)}
+              disabled={allTrashItems.length === 0}
+              className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 disabled:bg-rose-300 hover:bg-rose-700 text-white font-bold text-[11px] rounded-xl transition-all cursor-pointer shadow-xs disabled:cursor-not-allowed shrink-0"
+              title="حذف جميع المهملات"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>إفراغ السلة</span>
+            </button>
+          )}
+
           <div className="flex items-center gap-1 overflow-x-auto w-full md:w-auto shrink-0 py-0.5" dir="rtl">
             {[
               { id: 'all', label: 'كل المحذوفات' },
               { id: 'customers', label: 'الزباين المحذوفة' },
               { id: 'companies', label: 'الشركات اللي مسحناها' },
-              { id: 'merchants', label: 'التجار المحذوفين' }
+              { id: 'merchants', label: 'التجار المحذوفين' },
+              { id: 'transactions', label: 'العمليات الممسوحة' }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -271,6 +353,7 @@ export default function TrashCanModule({ state, onUpdateState }: TrashCanModuleP
                             else if (item.type === 'company') handlePermanentDeleteCompany(item.id);
                             else if (item.type === 'merchant') handlePermanentDeleteMerchant(item.id);
                             else if (item.type === 'deposit') handlePermanentDeleteDeposit(item.id);
+                            else if (item.type === 'transaction') handlePermanentDeleteTransaction((item as any).itemRef);
                           }}
                           className="px-2 py-1 text-[9px] font-black bg-rose-600 hover:bg-rose-700 text-white rounded-md transition-all cursor-pointer"
                         >
@@ -292,6 +375,7 @@ export default function TrashCanModule({ state, onUpdateState }: TrashCanModuleP
                           else if (item.type === 'company') handleRestoreCompany(item.id);
                           else if (item.type === 'merchant') handleRestoreMerchant(item.id);
                           else if (item.type === 'deposit') handleRestoreDeposit(item.id);
+                          else if (item.type === 'transaction') handleRestoreTransaction((item as any).itemRef);
                         }}
                         className="px-2.5 py-1 text-[10px] font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-150 rounded-lg flex items-center gap-1 transition-all cursor-pointer"
                         title="استرجاع الملف للمنظومة مباشرة"

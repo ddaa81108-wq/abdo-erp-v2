@@ -202,7 +202,7 @@ export default function PdfExportModule({ state }: PdfExportModuleProps) {
         reportTitle = 'سجل التوريدات وفواتير المشتريات للشركة';
         tableHeaders = ['م', 'البيان ومورد البضاعة', 'رقم المرجع', 'تاريخ الشراء', 'القيمة المقيدة'];
         
-        const purchases = state.purchases?.slice(-25) || [];
+        const purchases = state.purchases || [];
         let totalPurchases = 0;
 
         tableRowsHtml = purchases.map((p, idx) => {
@@ -232,7 +232,7 @@ export default function PdfExportModule({ state }: PdfExportModuleProps) {
         reportTitle = 'كشف حركة المبيعات وفواتير الزبائن';
         tableHeaders = ['م', 'العميل', 'البيان', 'رقم المرجع', 'تاريخ البيع', 'قيمة المبيعات'];
         
-        const sales = (state.debtTransactions || []).filter(t => t.type === 'debt').slice(-25);
+        const sales = (state.debtTransactions || []).filter(t => t.type === 'debt');
         let totalSales = 0;
 
         tableRowsHtml = sales.map((s, idx) => {
@@ -264,7 +264,7 @@ export default function PdfExportModule({ state }: PdfExportModuleProps) {
         reportTitle = 'تقرير قائمة كشف رصيد وحركة الخزنة المركزية';
         tableHeaders = ['رقم', 'التاريخ', 'تفاصيل الحركة والقيد', 'المصدر الأساسي', 'نوع المعاملة', 'المبلغ المحصّل'];
         
-        const txs = state.treasuryTransactions.slice(-25);
+        const txs = state.treasuryTransactions || [];
         let totalIn = 0;
         let totalOut = 0;
 
@@ -516,6 +516,12 @@ export default function PdfExportModule({ state }: PdfExportModuleProps) {
         try {
           const bodyEl = tempIframe.contentWindow?.document.body;
           if (!bodyEl) throw new Error("Could not find body element.");
+          
+          // Fix height so all items are rendered completely to the image
+          tempIframe.style.height = `${bodyEl.scrollHeight + 100}px`;
+          
+          // Wait briefly for reflow
+          await new Promise(r => setTimeout(r, 300));
 
           const dataUrl = await toPng(bodyEl, {
             quality: 1.0,
@@ -551,18 +557,14 @@ export default function PdfExportModule({ state }: PdfExportModuleProps) {
             heightLeft -= pdfHeight;
           }
 
-          pdf.autoPrint();
-          const blob = pdf.output('blob');
-          const blobUrl = URL.createObjectURL(blob);
-          
+          // Close the waiting window
           if (popupWin) {
-            popupWin.location.href = blobUrl;
-          } else {
-            const a = document.createElement('a');
-            a.href = blobUrl;
-            a.target = '_blank';
-            a.click();
+            popupWin.close();
           }
+
+          // Force download the file
+          pdf.save(`مستند_كشف_${selectedReport}_الفاخر.pdf`);
+          
         } catch(err) {
           console.error(err);
           if (popupWin) popupWin.close();
@@ -642,8 +644,7 @@ export default function PdfExportModule({ state }: PdfExportModuleProps) {
               <div className="flex flex-col gap-3 border bg-white p-3 rounded-2xl border-slate-200 shadow-sm max-h-[400px] overflow-y-auto scrollbar-thin">
                 {[
                   { id: 'customers', icon: '👥', label: 'كشف حساب ديون العملاء والزبائن الإجمالي' },
-                  { id: 'merchants', icon: '💼', label: 'كشف ديون وحسابات كبار التجار' },
-                  { id: 'companies', icon: '🏭', label: 'بيان الحسابات وتخالص الشركات والموردين' },
+                  { id: 'companies', icon: '🏭', label: 'بيان حسابات الشركات والتجار والموردين' },
                   { id: 'deposits', icon: '🔒', label: 'كشف سندات الأمانات والودائع الجارية' },
                   { id: 'treasury', icon: '💸', label: 'تقرير حركة الخزنة المركزية اليومية' },
                   { id: 'purchases', icon: '📦', label: 'سجل فواتير وحركة المشتريات للشركة' },

@@ -35,6 +35,7 @@ export interface DebtTransaction {
   note: string;
   postedToTreasury: boolean;
   createdAt: string;
+  isDeleted?: boolean;
 }
 
 export interface Company {
@@ -61,6 +62,7 @@ export interface CompanyTransaction {
   note: string;
   postedToTreasury: boolean;
   createdAt: string;
+  isDeleted?: boolean;
 }
 
 export interface Merchant {
@@ -87,6 +89,7 @@ export interface MerchantTransaction {
   note: string;
   postedToTreasury: boolean;
   createdAt: string;
+  isDeleted?: boolean;
 }
 
 export interface TreasuryTransaction {
@@ -101,6 +104,7 @@ export interface TreasuryTransaction {
   sourceId?: string;
   description: string;
   createdAt: string;
+  isDeleted?: boolean;
 }
 
 export interface PurchaseRecord {
@@ -204,7 +208,7 @@ export interface ERPState {
   companyTransactions: CompanyTransaction[];
   merchants: Merchant[];
   merchantTransactions: MerchantTransaction[];
-  treasuryTransactions: TreasuryTransaction[];
+  treasuryTransactions?: any[];
   purchases: PurchaseRecord[];
   trustDeposits: TrustDeposit[];
   safeAudits: SafeAudit[];
@@ -293,16 +297,7 @@ export const INITIAL_ERP_STATE: ERPState = {
     // Purchase transaction posted (will decrease safe balance)
     { id: 'tx_t_6', type: 'out', amount: 12000, currency: 'د.ل', conversionRate: 1, date: '2026-06-02T10:00:00', referenceNo: 'TX-2026-000295', source: 'purchase', sourceId: 'p_1', description: 'مشتريات مسددة: كابلات ضغط عالي مجلفنة', createdAt: '2026-06-02T10:00:00' }
   ],
-  purchases: [
-    // Posted purchase
-    { id: 'p_1', itemName: 'كابلات ضغط عالي مجلفنة 12 مم', quantity: 200, unitPrice: 60, totalPrice: 12000, currency: 'د.ل', conversionRate: 1.0, date: '2026-06-02T10:00:00', companyId: 'comp_1', referenceNo: 'TX-2026-000295', postedToTreasury: true, createdAt: '2026-06-02T10:00:00' },
-    
-    // Unposted purchase (alert trigger!)
-    { id: 'p_2', itemName: 'أعمدة تثبيت خشبية للمواقع الخارجية', quantity: 50, unitPrice: 80, totalPrice: 4000, currency: 'د.ل', conversionRate: 1.0, date: '2026-06-09T14:00:00', companyId: 'comp_1', referenceNo: 'TX-2026-000361', postedToTreasury: false, createdAt: '2026-06-09T14:00:00' },
-    
-    // Purchase with missing conversion rate / conversion rate defined as 0 or undefined for foreign currency (alert trigger!)
-    { id: 'p_3', itemName: 'منظمات جهد رقمية دقيقة مستوردة', quantity: 15, unitPrice: 120, totalPrice: 1800, currency: 'دولار $', conversionRate: undefined, date: '2026-06-11T16:30:00', referenceNo: 'TX-2026-000399', postedToTreasury: false, createdAt: '2026-06-11T16:30:00' }
-  ],
+  purchases: [],
   trustDeposits: [
     { 
       id: 'dep_1', 

@@ -54,10 +54,7 @@ export default function GlobalSearch({ state, onNavigateToItem, onClose }: Globa
       return { ...cy, customerName: parentCustomer?.name || 'عميل مجهول' };
     }).filter(cy => cy.customerName.toLowerCase().includes(q));
 
-    // 4. Search Treasury Logs (وارد وصادر)
-    const foundTreasury = state.treasuryTransactions.filter(t => 
-      t.description.toLowerCase().includes(q) || t.referenceNo.toLowerCase().includes(q)
-    );
+    // 4. Removed logic
 
     // 5. Search Purchases ledger
     const foundPurchases = state.purchases.filter(p => 
@@ -68,7 +65,7 @@ export default function GlobalSearch({ state, onNavigateToItem, onClose }: Globa
       customers: activeCusts,
       companies: foundCompanies,
       archive: foundArchives,
-      treasury: foundTreasury,
+      treasury: [],
       purchases: foundPurchases
     });
   }, [query, state]);
@@ -77,7 +74,6 @@ export default function GlobalSearch({ state, onNavigateToItem, onClose }: Globa
     results.customers.length + 
     results.companies.length + 
     results.archive.length + 
-    results.treasury.length + 
     results.purchases.length;
 
   return (
@@ -187,36 +183,6 @@ export default function GlobalSearch({ state, onNavigateToItem, onClose }: Globa
                         <div className="flex items-center gap-1.5">
                           <span className="text-zinc-500 bg-zinc-100 px-1.5 py-0.5 rounded text-[10px]">مغلق ومسدد</span>
                           <ArrowUpRight className="w-3.5 h-3.5 text-zinc-400" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Treasury Ledger Row */}
-              {results.treasury.length > 0 && (
-                <div className="bg-slate-50 border border-slate-100 p-3 rounded-lg">
-                  <h4 className="flex items-center gap-1.5 text-emerald-800 font-bold text-xs mb-2">
-                    <Landmark className="w-4 h-4 text-emerald-600" />
-                    <span>حركة الخزينة الفورية</span>
-                  </h4>
-                  <div className="space-y-1">
-                    {results.treasury.slice(0, 4).map(t => (
-                      <div 
-                        key={t.id}
-                        onClick={() => onNavigateToItem('treasury', t.referenceNo)}
-                        className="text-[11px] bg-white hover:bg-emerald-50 border p-1.5 rounded cursor-pointer transition-all text-right font-mono"
-                      >
-                        <div className="flex justify-between font-sans">
-                          <span className="font-semibold text-slate-800 truncate max-w-[150px]">{t.description}</span>
-                          <span className={t.type === 'in' ? 'text-emerald-700 font-bold' : 'text-rose-600 font-bold'}>
-                            {t.type === 'in' ? '+' : '-'}{t.amount.toLocaleString()} {t.currency}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-[9px] text-slate-400 mt-0.5">
-                          <span>{t.referenceNo}</span>
-                          <span>{new Date(t.date).toLocaleDateString('ar-LY')}</span>
                         </div>
                       </div>
                     ))}

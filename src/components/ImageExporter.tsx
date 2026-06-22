@@ -1,21 +1,50 @@
-import React, { useState, useRef } from 'react';
-import { jsPDF } from 'jspdf';
-import { toPng } from 'html-to-image';
-import { Camera, Image, Copy, Download, Share2, Eye, Sliders, Smartphone, Laptop, Check, AlertCircle, FileText } from 'lucide-react';
-import { Customer, CustomerCycle, DebtTransaction, Company, CompanyTransaction, PurchaseRecord, TrustDeposit } from '../types';
+import React, { useState, useRef } from "react";
+import { jsPDF } from "jspdf";
+import { toPng } from "html-to-image";
+import {
+  Camera,
+  Image,
+  Copy,
+  Download,
+  Share2,
+  Eye,
+  Sliders,
+  Smartphone,
+  Laptop,
+  Check,
+  AlertCircle,
+  FileText,
+} from "lucide-react";
+import {
+  Customer,
+  CustomerCycle,
+  DebtTransaction,
+  Company,
+  CompanyTransaction,
+  PurchaseRecord,
+  TrustDeposit,
+} from "../types";
 
 interface ImageExporterProps {
   sectionName: string;
   activeCurrency: string;
   // Dynamic statistics to display in the card
   metrics: {
-    label1: string; value1: string | number;
-    label2: string; value2: string | number;
-    label3: string; value3: string | number;
+    label1: string;
+    value1: string | number;
+    label2: string;
+    value2: string | number;
+    label3: string;
+    value3: string | number;
   };
   // Dynamic table rows to export
   tableHeaders: string[];
   tableRows: Array<Array<string | number>>;
+  footerMetrics?: Array<{
+    label: string;
+    value: string | number;
+    colorClass: string;
+  }>;
   onClose?: () => void;
 }
 
@@ -25,11 +54,16 @@ export default function ImageExporter({
   metrics,
   tableHeaders,
   tableRows,
-  onClose
+  footerMetrics,
+  onClose,
 }: ImageExporterProps) {
-  const [imageType, setImageType] = useState<'full' | 'cards' | 'table' | 'report'>('full');
-  const [quality, setQuality] = useState<'high' | 'standard'>('high');
-  const [layoutMode, setLayoutMode] = useState<'portrait' | 'landscape'>('portrait'); // 📱 صورة طولية | 🖥️ صورة عرضية
+  const [imageType, setImageType] = useState<
+    "full" | "cards" | "table" | "report"
+  >("full");
+  const [quality, setQuality] = useState<"high" | "standard">("high");
+  const [layoutMode, setLayoutMode] = useState<"portrait" | "landscape">(
+    "portrait",
+  ); // 📱 صورة طولية | 🖥️ صورة عرضية
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [exportUrl, setExportUrl] = useState<string | null>(null);
@@ -44,22 +78,24 @@ export default function ImageExporter({
     try {
       // Small timeout to allow styles and fonts to fully paint
       await new Promise((resolve) => setTimeout(resolve, 400));
-      
+
       const dataUrl = await toPng(cardRef.current, {
         quality: 1.0,
-        pixelRatio: quality === 'high' ? 4 : 2,
-        backgroundColor: '#FFFFFF',
+        pixelRatio: quality === "high" ? 4 : 2,
+        backgroundColor: "#FFFFFF",
         style: {
-          transform: 'none',
-          transformOrigin: 'unset'
-        }
+          transform: "none",
+          transformOrigin: "unset",
+        },
       });
       setExportUrl(dataUrl);
       setGenerating(false);
       return dataUrl;
     } catch (err: any) {
       console.error(err);
-      setErrorMessage('فشل النظام في تشكيل الصورة الرسومية بسبب حماية المتصفح، يرجى إعادة المحاولة.');
+      setErrorMessage(
+        "فشل النظام في تشكيل الصورة الرسومية بسبب حماية المتصفح، يرجى إعادة المحاولة.",
+      );
       setGenerating(false);
       return null;
     }
@@ -69,18 +105,20 @@ export default function ImageExporter({
   const handleDownload = async () => {
     const url = await generateCardImage();
     if (!url) return;
-    
-    const link = document.createElement('a');
-    link.download = `ABDO_ERP_${sectionName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.png`;
+
+    const link = document.createElement("a");
+    link.download = `ABDO_ERP_${sectionName.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.png`;
     link.href = url;
     link.click();
   };
 
   const handlePrintPdf = async () => {
     // Open a popup window immediately to bypass popup blockers
-    const popupWin = window.open('', '_blank');
+    const popupWin = window.open("", "_blank");
     if (popupWin) {
-      popupWin.document.write('<body><h2 style="text-align:center; font-family:sans-serif; margin-top: 50px;">جاري تجهيز مستند الـ PDF الملكي... الرجاء الانتظار</h2></body>');
+      popupWin.document.write(
+        '<body><h2 style="text-align:center; font-family:sans-serif; margin-top: 50px;">جاري تجهيز مستند الـ PDF الملكي... الرجاء الانتظار</h2></body>',
+      );
     }
 
     try {
@@ -93,24 +131,24 @@ export default function ImageExporter({
       const dataUrl = await toPng(el, {
         quality: 1.0,
         pixelRatio: 2,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: "#FFFFFF",
         style: {
-          transform: 'none',
-          transformOrigin: 'top left'
-        }
+          transform: "none",
+          transformOrigin: "top left",
+        },
       });
-      
-      const pdfPattern = layoutMode === 'portrait' ? 'portrait' : 'landscape';
-      
+
+      const pdfPattern = layoutMode === "portrait" ? "portrait" : "landscape";
+
       const pdf = new jsPDF({
         orientation: pdfPattern,
-        unit: 'pt',
-        format: 'a4'
+        unit: "pt",
+        format: "a4",
       });
 
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
-      
+
       const elWidth = el.offsetWidth || 1200;
       const elHeight = el.offsetHeight || 1600;
 
@@ -120,32 +158,27 @@ export default function ImageExporter({
       let heightLeft = finalH;
       let position = 0;
 
-      pdf.addImage(dataUrl, 'PNG', 0, position, finalW, finalH);
+      pdf.addImage(dataUrl, "PNG", 0, position, finalW, finalH);
       heightLeft -= pdfHeight;
 
       while (heightLeft > 0) {
         position = heightLeft - finalH;
         pdf.addPage();
-        pdf.addImage(dataUrl, 'PNG', 0, position, finalW, finalH);
+        pdf.addImage(dataUrl, "PNG", 0, position, finalW, finalH);
         heightLeft -= pdfHeight;
       }
 
-      pdf.autoPrint();
-      const blob = pdf.output('blob');
-      const blobUrl = URL.createObjectURL(blob);
-      
+      // Close the waiting window
       if (popupWin) {
-        popupWin.location.href = blobUrl;
-      } else {
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.target = '_blank';
-        a.click();
+        popupWin.close();
       }
+
+      // Force download the file
+      pdf.save(`مستند_كشف_${sectionName.replace(/\s+/g, "_")}_الفاخر.pdf`);
     } catch (err) {
       console.error(err);
       if (popupWin) popupWin.close();
-      setErrorMessage('حدث خطأ أثناء التصدير للـ PDF.');
+      setErrorMessage("حدث خطأ أثناء التصدير للـ PDF.");
     }
   };
 
@@ -157,34 +190,44 @@ export default function ImageExporter({
     try {
       const response = await fetch(url);
       const blob = await response.blob();
-      
+
       // Attempt writing image to clipboard
       await navigator.clipboard.write([
         new ClipboardItem({
-          [blob.type]: blob
-        })
+          [blob.type]: blob,
+        }),
       ]);
-      
+
       setCopied(true);
       setTimeout(() => setCopied(false), 3000);
     } catch (err) {
-      console.warn('ClipboardItem not supported in iframe sandbox. Direct fallback shown.');
-      setErrorMessage('قيود الأمان للمتصفح تمنع النسخ التلقائي المباشر للصور للحافظة. يرجى الضغط زر "حفظ الصورة" أو النقر مطولاً على مستعرض المعاينة وحفظها.');
+      console.warn(
+        "ClipboardItem not supported in iframe sandbox. Direct fallback shown.",
+      );
+      setErrorMessage(
+        'قيود الأمان للمتصفح تمنع النسخ التلقائي المباشر للصور للحافظة. يرجى الضغط زر "حفظ الصورة" أو النقر مطولاً على مستعرض المعاينة وحفظها.',
+      );
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/45backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto" dir="rtl">
+    <div
+      className="fixed inset-0 bg-slate-900/45backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
+      dir="rtl"
+    >
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-5xl w-full grid grid-cols-1 lg:grid-cols-12 overflow-hidden text-right">
-        
         {/* Left Side: Parameters / Settings Controls */}
         <div className="p-5 lg:col-span-5 border-l border-slate-100 flex flex-col justify-between bg-slate-50">
           <div>
             <div className="flex items-center gap-2 pb-3 border-b mb-4">
               <Camera className="w-5 h-5 text-indigo-600 animate-pulse" />
               <div>
-                <h2 className="font-bold text-sm text-slate-800">📸 إعداد وتصدير كارت الصورة المحترف</h2>
-                <p className="text-[10px] text-slate-400">خاصية WhatsApp Share Card الفورية</p>
+                <h2 className="font-bold text-sm text-slate-800">
+                  📸 إعداد وتصدير كارت الصورة المحترف
+                </h2>
+                <p className="text-[10px] text-slate-400">
+                  خاصية WhatsApp Share Card الفورية
+                </p>
               </div>
             </div>
 
@@ -197,73 +240,46 @@ export default function ImageExporter({
             )}
 
             <div className="space-y-4 text-xs">
-              {/* Image Type Selector */}
-              <div>
-                <label className="block font-bold text-slate-700 mb-1.5">نوع تجميع الصورة:</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setImageType('full')}
-                    className={`p-2 rounded-lg border text-center transition-all ${
-                      imageType === 'full' ? 'bg-indigo-600 text-white border-subtle' : 'bg-white text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    ● كارت متكامل
-                  </button>
-                  <button
-                    onClick={() => setImageType('report')}
-                    className={`p-2 rounded-lg border text-center transition-all ${
-                      imageType === 'report' ? 'bg-indigo-600 text-white border-subtle' : 'bg-white text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    ● الخلاصة فقط
-                  </button>
-                  <button
-                    onClick={() => setImageType('table')}
-                    className={`p-2 rounded-lg border text-center transition-all ${
-                      imageType === 'table' ? 'bg-indigo-600 text-white border-subtle' : 'bg-white text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    ● جدول الحسابات
-                  </button>
-                  <button
-                    onClick={() => setImageType('cards')}
-                    className={`p-2 rounded-lg border text-center transition-all ${
-                      imageType === 'cards' ? 'bg-indigo-600 text-white border-subtle' : 'bg-white text-slate-600 hover:bg-slate-100'
-                    }`}
-                  >
-                    ● الكروت فقط
-                  </button>
-                </div>
-              </div>
+              {/* Image Type Selector has been removed as per the user's request, the ledger view is the unified output strategy. */}
 
               {/* Quality Settings */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1.5">دقة وجودة التوليد الرسومي للشير بالواتساب:</label>
+                <label className="block font-bold text-slate-700 mb-1.5">
+                  دقة وجودة التوليد الرسومي للشير بالواتساب:
+                </label>
                 <div className="flex flex-col gap-2 mt-1">
                   <label className="flex items-center gap-2 cursor-pointer bg-indigo-50/50 p-2 rounded-lg border border-indigo-100 hover:bg-indigo-50 transition">
                     <input
                       type="radio"
                       name="quality"
-                      checked={quality === 'high'}
-                      onChange={() => setQuality('high')}
+                      checked={quality === "high"}
+                      onChange={() => setQuality("high")}
                       className="text-indigo-600 w-4 h-4"
                     />
                     <div>
-                      <span className="font-extrabold text-indigo-950 block">💎 صورة فائقة الوضوح (Ultra HD 4K)</span>
-                      <span className="text-[10px] text-indigo-600">مثالية للطباعة والمشاركة بأعلى جودة تكبير على الواتساپ</span>
+                      <span className="font-extrabold text-indigo-950 block">
+                        💎 صورة فائقة الوضوح (Ultra HD 4K)
+                      </span>
+                      <span className="text-[10px] text-indigo-600">
+                        مثالية للطباعة والمشاركة بأعلى جودة تكبير على الواتساپ
+                      </span>
                     </div>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer bg-slate-50 p-2 rounded-lg border border-slate-200 hover:bg-slate-100 transition">
                     <input
                       type="radio"
                       name="quality"
-                      checked={quality === 'standard'}
-                      onChange={() => setQuality('standard')}
+                      checked={quality === "standard"}
+                      onChange={() => setQuality("standard")}
                       className="text-slate-600 w-4 h-4"
                     />
                     <div>
-                      <span className="font-bold text-slate-800 block">📱 صورة قياسية سريعة (Full HD 1080p)</span>
-                      <span className="text-[10px] text-slate-500">سريعة التوليد وقليلة المساحة ومناسبة للشاشات العادية</span>
+                      <span className="font-bold text-slate-800 block">
+                        📱 صورة قياسية سريعة (Full HD 1080p)
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        سريعة التوليد وقليلة المساحة ومناسبة للشاشات العادية
+                      </span>
                     </div>
                   </label>
                 </div>
@@ -271,21 +287,27 @@ export default function ImageExporter({
 
               {/* Layout Mode (Portrait vs. Landscape) */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1.5">أبعاد وتنسيق العرض:</label>
+                <label className="block font-bold text-slate-700 mb-1.5">
+                  أبعاد وتنسيق العرض:
+                </label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
-                    onClick={() => setLayoutMode('portrait')}
+                    onClick={() => setLayoutMode("portrait")}
                     className={`p-2.5 rounded-lg border flex items-center justify-center gap-1.5 transition-all ${
-                      layoutMode === 'portrait' ? 'bg-indigo-50 border-indigo-300 text-indigo-900 font-bold' : 'bg-white text-slate-600 hover:bg-slate-100'
+                      layoutMode === "portrait"
+                        ? "bg-indigo-50 border-indigo-300 text-indigo-900 font-bold"
+                        : "bg-white text-slate-600 hover:bg-slate-100"
                     }`}
                   >
                     <Smartphone className="w-4 h-4 text-indigo-600" />
                     <span>📱 صورة طولية (مناسب للواتس)</span>
                   </button>
                   <button
-                    onClick={() => setLayoutMode('landscape')}
+                    onClick={() => setLayoutMode("landscape")}
                     className={`p-2.5 rounded-lg border flex items-center justify-center gap-1.5 transition-all ${
-                      layoutMode === 'landscape' ? 'bg-indigo-50 border-indigo-300 text-indigo-900 font-bold' : 'bg-white text-slate-600 hover:bg-slate-100'
+                      layoutMode === "landscape"
+                        ? "bg-indigo-50 border-indigo-300 text-indigo-900 font-bold"
+                        : "bg-white text-slate-600 hover:bg-slate-100"
                     }`}
                   >
                     <Laptop className="w-4 h-4 text-indigo-600" />
@@ -302,9 +324,9 @@ export default function ImageExporter({
               onClick={handleCopyToClipboard}
               disabled={generating}
               className={`w-full py-2.5 px-4 rounded-xl font-bold flex items-center justify-center gap-2 text-xs transition-all border ${
-                copied 
-                  ? 'bg-emerald-605 text-white border-emerald-600' 
-                  : 'bg-indigo-605 hover:bg-indigo-700 text-white border-indigo-600 shadow-lg shadow-indigo-100'
+                copied
+                  ? "bg-emerald-605 text-white border-emerald-600"
+                  : "bg-indigo-605 hover:bg-indigo-700 text-white border-indigo-600 shadow-lg shadow-indigo-100"
               }`}
             >
               {copied ? (
@@ -329,14 +351,16 @@ export default function ImageExporter({
               <span>📥 حفظ وتنزيل كارت صورة PNG فائقة الوضوح</span>
             </button>
 
-            <button
-              onClick={handlePrintPdf}
-              disabled={generating}
-              className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold flex items-center justify-center gap-2 text-xs shadow-md cursor-pointer transition-all hover:scale-101 border-0"
-            >
-              <FileText className="w-4.5 h-4.5 text-white" />
-              <span>📄 تصدير ومعاينة كـ PDF ملكي فوري (صورة مدمجة)</span>
-            </button>
+            {sectionName !== "كشف الديون للمندوب" && (
+              <button
+                onClick={handlePrintPdf}
+                disabled={generating}
+                className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold flex items-center justify-center gap-2 text-xs shadow-md cursor-pointer transition-all hover:scale-101 border-0"
+              >
+                <FileText className="w-4.5 h-4.5 text-white" />
+                <span>📄 تصدير ومعاينة كـ PDF ملكي فوري (صورة مدمجة)</span>
+              </button>
+            )}
 
             <button
               onClick={onClose}
@@ -350,88 +374,107 @@ export default function ImageExporter({
         {/* Right Side: LIVE PREVIEW SCREEN containing the exact rendered element to print */}
         <div className="p-5 lg:col-span-7 bg-slate-200 border-r border-slate-100 flex items-center justify-center overflow-auto max-h-[85vh]">
           {/* Card Wrapper specifying size depending on Layout (Portrait vs Landscape) */}
-          <div 
+          <div
             ref={cardRef}
-            className="bg-white text-slate-950 border-4 border-slate-950 rounded-2xl p-7 shadow-2xl shrink-0 select-none text-right font-sans"
+            className={`bg-white text-slate-950 p-3 shrink-0 select-none text-right font-sans`}
             style={{
-              width: layoutMode === 'portrait' ? '520px' : '820px',
-              minHeight: layoutMode === 'portrait' ? '720px' : '485px',
+              width:
+                sectionName === "صورة واتساب (ديون العملاء)" ||
+                sectionName === "كشف الديون للمندوب"
+                  ? "auto"
+                  : layoutMode === "portrait"
+                    ? "520px"
+                    : "820px",
+              minHeight: "auto",
+              minWidth:
+                sectionName === "صورة واتساب (ديون العملاء)" ||
+                sectionName === "كشف الديون للمندوب"
+                  ? "350px"
+                  : "auto",
             }}
           >
-            {/* Header: Royal Majestic ERP Brand Header with no custom operator names/stamps */}
-            <div className="flex items-center justify-between border-b-2 border-slate-900 pb-3.5 mb-5">
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 rounded-xl bg-slate-950 flex items-center justify-center text-white text-lg">
-                  👑
+            {/* Simple one-line header */}
+            {sectionName !== "صورة واتساب (ديون العملاء)" &&
+              sectionName !== "كشف الديون للمندوب" && (
+                <div className="flex items-center justify-between border-b-2 border-slate-900 pb-2 mb-3 text-[12px] font-black">
+                  <div className="flex items-center gap-2">
+                    <span>المنظومة الملكية</span>
+                    <span className="text-slate-400">|</span>
+                    <span>{sectionName}</span>
+                  </div>
+                  <span>
+                    {new Date().toLocaleDateString("ar-LY")} •{" "}
+                    {new Date().toLocaleTimeString("ar-LY", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
                 </div>
-                <div className="text-right">
-                  <h1 className="font-black text-[14px] text-slate-950 leading-tight">المنظومة الملكية المهيبة</h1>
-                  <span className="text-[9px] text-[#b49830] font-sans tracking-wide font-extrabold block">ROYAL MAJESTIC SYSTEM</span>
-                </div>
-              </div>
-
-              <div className="text-left font-mono text-xs">
-                <span className="text-[11px] bg-slate-950 text-white px-2.5 py-1 rounded font-black">
-                  {sectionName}
-                </span>
-                <p className="text-[9px] text-slate-900 font-extrabold mt-1.5">{new Date().toLocaleDateString('ar-LY')} • {new Date().toLocaleTimeString('ar-LY', { hour: '2-digit', minute: '2-digit' })}</p>
-              </div>
-            </div>
-
-            {/* Dynamic visual metric cards in PNG */}
-            {(imageType === 'full' || imageType === 'cards' || imageType === 'report') && (
-              <div className={`grid ${layoutMode === 'portrait' ? 'grid-cols-2' : 'grid-cols-3'} gap-3 mb-5`}>
-                <div className="bg-slate-50 border-2 border-slate-900 p-3 rounded-lg text-right font-mono">
-                  <span className="block text-slate-905 font-extrabold text-[11px] leading-none mb-1.5">{metrics.label1}</span>
-                  <span className="font-black text-slate-950 text-xs">{metrics.value1}</span>
-                </div>
-                <div className="bg-rose-50 border-2 border-rose-950 p-3 rounded-lg text-right font-mono">
-                  <span className="block text-rose-955 font-extrabold text-[11px] leading-none mb-1.5">{metrics.label2}</span>
-                  <span className="font-black text-rose-700 text-xs">{metrics.value2}</span>
-                </div>
-                <div className="bg-emerald-50 border-2 border-emerald-950 p-3 rounded-lg text-right font-mono col-span-2 sm:col-span-1">
-                  <span className="block text-emerald-950 font-extrabold text-[11px] leading-none mb-1.5">{metrics.label3}</span>
-                  <span className="font-black text-emerald-850 text-xs">{metrics.value3}</span>
-                </div>
-              </div>
-            )}
+              )}
 
             {/* Data Table */}
-            {(imageType === 'full' || imageType === 'table') && (
-              <div className="border-2 border-slate-950 rounded-xl overflow-hidden mb-5 bg-white">
-                <table className="w-full text-right text-xs border-collapse">
-                  <thead className="bg-slate-950 border-b-2 border-slate-950 text-white font-black">
+            <div
+              className={`${sectionName === "صورة واتساب (ديون العملاء)" || sectionName === "كشف الديون للمندوب" ? "" : ""} w-full bg-white`}
+            >
+              <table className="w-full text-right text-xs border-collapse">
+                {sectionName !== "كشف الديون للمندوب" && (
+                  <thead
+                    className={`${sectionName === "صورة واتساب (ديون العملاء)" ? "bg-indigo-50 text-indigo-900 border-b border-indigo-100" : "bg-slate-100 border-b-2 border-slate-950 text-slate-900"} font-black`}
+                  >
                     <tr>
                       {tableHeaders.map((hdr, idx) => (
-                        <th key={idx} className="p-2.5 border-r last:border-r-0 border-slate-700 text-[11px] font-black">
+                        <th
+                          key={idx}
+                          className={`px-1 py-1 ${sectionName === "صورة واتساب (ديون العملاء)" ? "border-none text-[14px] font-bold text-center" : "border-r last:border-r-0 border-slate-700 text-[10px] font-black"}`}
+                        >
                           {hdr}
                         </th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody>
-                    {tableRows.slice(0, 12).map((row, rIdx) => (
-                      <tr key={rIdx} className="hover:bg-slate-100 border-b border-slate-200 last:border-none">
-                        {row.map((cell, cIdx) => (
-                          <td key={cIdx} className="p-2 rounded-none border-r last:border-r-0 border-slate-200 font-black font-mono text-slate-950 text-[11px]">
-                            {cell}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                )}
+                <tbody>
+                  {tableRows.map((row, rIdx) => (
+                    <tr
+                      key={rIdx}
+                      className={`hover:bg-slate-50 ${sectionName === "صورة واتساب (ديون العملاء)" ? "border-b border-slate-100" : sectionName === "كشف الديون للمندوب" ? "border-b border-slate-300" : "border-b border-slate-200"} last:border-none`}
+                    >
+                      {row.map((cell, cIdx) => (
+                        <td
+                          key={cIdx}
+                          contentEditable={
+                            sectionName === "صورة واتساب (ديون العملاء)"
+                          }
+                          suppressContentEditableWarning={true}
+                          className={`px-1 py-0.5 ${sectionName === "صورة واتساب (ديون العملاء)" ? 'border-none font-bold text-[14px] text-center focus:outline-none focus:bg-indigo-50/50 min-h-[30px] empty:before:content-["....."] empty:before:text-slate-300' : sectionName === "كشف الديون للمندوب" ? "border-r border-slate-300 last:border-r-0 font-bold text-[14px] text-center" : "border-r last:border-r-0 border-slate-200 font-bold font-mono text-[10px]"} text-slate-950`}
+                        >
+                          {cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
 
-            {/* Subtle Watermark Badge with No Personal/Operator Name */}
-            <div className="text-center pt-3.5 border-t-2 border-slate-900 flex items-center justify-between text-[10px] text-slate-900 font-extrabold font-sans">
-              <span>تم استخراجه وتوثيقه فنيًا عبر المنظومة الملكية المهيبة ✓</span>
-              <span>العملة المفضلة: {activeCurrency}</span>
+              {footerMetrics && footerMetrics.length > 0 && (
+                <div className="grid grid-cols-4 gap-2 mt-4 border-t-2 border-slate-900 pt-3">
+                  {footerMetrics.map((fm, idx) => (
+                    <div key={idx} className="text-center font-mono">
+                      <span className="block text-slate-500 font-extrabold text-[10px] mb-1">
+                        {fm.label}
+                      </span>
+                      <span
+                        className={`text-[12px] font-black ${fm.colorClass}`}
+                      >
+                        {fm.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
-
       </div>
     </div>
   );

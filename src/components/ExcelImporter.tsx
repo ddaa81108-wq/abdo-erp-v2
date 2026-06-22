@@ -1,18 +1,11 @@
 import React, { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { Upload, FileSpreadsheet, AlertCircle, CheckCircle, HelpCircle, ChevronRight, Play, RefreshCw, Layers } from 'lucide-react';
-import { ERPState, Customer, CustomerCycle, DebtTransaction } from '../types';
+import { ERPState, Customer, CustomerCycle, DebtTransaction, Company, CompanyTransaction, Merchant, MerchantTransaction, TrustDeposit } from '../types';
 
 interface ExcelImporterProps {
   state: ERPState;
-  onImportComplete: (importedData: {
-    addedCustomersCount: number;
-    mergedCustomersCount: number;
-    errorsCount: number;
-    newCustomers: Customer[];
-    newCycles: CustomerCycle[];
-    newTransactions: DebtTransaction[];
-  }) => void;
+  onImportComplete: (newState: ERPState) => void;
   onClose?: () => void;
 }
 
@@ -38,13 +31,15 @@ export default function ExcelImporter({ state, onImportComplete, onClose }: Exce
 
   const [previewRows, setPreviewRows] = useState<any[]>([]);
   const [parsingErrors, setParsingErrors] = useState<string[]>([]);
-  const [duplicateMode, setDuplicateMode] = useState<'merge' | 'createNew'>('merge'); 
+  const [duplicateMode, setDuplicateMode] = useState<'merge' | 'skip'>('merge'); 
   const [report, setReport] = useState<{
     addedCount: number;
     mergedCount: number;
     errorCount: number;
     show: boolean;
   } | null>(null);
+
+  const [targetModule, setTargetModule] = useState<'debts' | 'companies' | 'merchants' | 'deposits'>('debts');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -92,15 +87,15 @@ export default function ExcelImporter({ state, onImportComplete, onClose }: Exce
 
         fileHeaders.forEach(header => {
           const text = header.toLowerCase();
-          if (text.includes('الاسم') || text.includes('الزبون') || text.includes('name') || text.includes('عميل')) {
+          if (text.includes('الاسم') || text.includes('الزبون') || text.includes('name') || text.includes('عميل') || text.includes('شرك') || text.includes('تاجر') || text.includes('مورد') || text.includes('مودع')) {
             autoMappings.nameCol = header;
-          } else if (text.includes('الدين') || text.includes('المطلوب') || text.includes('debt') || text.includes('سعر') || text.includes('قيمة')) {
+          } else if (text.includes('الدين') || text.includes('المطلوب') || text.includes('debt') || text.includes('سعر') || text.includes('قيمة') || text.includes('رصيد') || text.includes('مبلغ')) {
             autoMappings.debtCol = header;
-          } else if (text.includes('المدفوع') || text.includes('سداد') || text.includes('paid') || text.includes('دفعة')) {
+          } else if (text.includes('المدفوع') || text.includes('سداد') || text.includes('paid') || text.includes('دفعة') || text.includes('واصل')) {
             autoMappings.paidCol = header;
           } else if (text.includes('عملة') || text.includes('currency')) {
             autoMappings.currencyCol = header;
-          } else if (text.includes('تاريخ') || text.includes('date')) {
+          } else if (text.includes('تاريخ') || text.includes('date') || text.includes('وقت')) {
             autoMappings.dateCol = header;
           } else if (text.includes('قسم') || text.includes('section') || text.includes('نوع')) {
             autoMappings.sectionCol = header;
@@ -146,24 +141,58 @@ export default function ExcelImporter({ state, onImportComplete, onClose }: Exce
 
   // 3. Process complete Import into Database!
   const executeImport = () => {
-    if (!fileData || !mappings.nameCol) {
-      alert('يرجى تحديد العمود الخاص باسم العميل لإتمام عملية الاستيراد بنجاح.');
+    if (!fileData) {
+      setParsingErrors(['يرجى اختيار ملف الإكسل أولاً.']);
+      alert('حدث خطأ: يرجى اختيار ملف الإكسل أولاً.');
       return;
+    }
+    if (!mappings.nameCol) {
+      setParsingErrors(['يرجى تحديد "اسم العميل/الشركة/المودع" من القائمة المنسدلة لإتمام عملية الاستيراد بنجاح.']);
+      alert('خطأ: يرجى تحديد العمود الخاص بالاسم من قائمة المطابقة أولاً.');
+      return;
+    }
+    
+    setParsingErrors([]); // clear previous errors
+
+    // Check for duplicates in the Excel file itself
+    const importedNames = new Set<string>();
+    const duplicatesInFile: string[] = [];
+    fileData.forEach((row) => {
+      const record: any = {};
+      headers.forEach((h, idx) => { record[h] = row[idx]; });
+      const rawName = String(record[mappings.nameCol] || '').trim();
+      if (rawName) {
+        if (importedNames.has(rawName)) {
+          duplicatesInFile.push(rawName);
+        }
+        importedNames.add(rawName);
+      }
+    });
+
+    if (duplicatesInFile.length > 0) {
+      const uniqueDups = Array.from(new Set(duplicatesInFile));
+      alert(`تنبيه: تم العثور على أسماء مكررة داخل ملف الإكسل نفسه (${uniqueDups.length} إسم مكرر). يرجى توحيد المبالغ في صف واحد لكل عميل لمنع الازدواجية.\n\nأمثلة: ${uniqueDups.slice(0, 3).join(', ')}`);
+      return; // Stop import
     }
 
     let addedCount = 0;
     let mergedCount = 0;
     let errorCount = 0;
 
-    const newCustomersList: Customer[] = [];
-    const newCyclesList: CustomerCycle[] = [];
-    const newTransactionsList: DebtTransaction[] = [];
+    const newState: ERPState = JSON.parse(JSON.stringify(state));
+    newState.customers = newState.customers || [];
+    newState.cycles = newState.cycles || [];
+    newState.debtTransactions = newState.debtTransactions || [];
+    newState.companies = newState.companies || [];
+    newState.companyTransactions = newState.companyTransactions || [];
+    newState.merchants = newState.merchants || [];
+    newState.merchantTransactions = newState.merchantTransactions || [];
+    newState.trustDeposits = newState.trustDeposits || [];
+    newState.purchases = newState.purchases || [];
 
-    // Helper to generate reference numbers sequentially
     let lastRefNum = 450;
 
     fileData.forEach((row, rowIndex) => {
-      // Create record object
       const record: any = {};
       headers.forEach((h, idx) => {
         record[h] = row[idx];
@@ -175,33 +204,46 @@ export default function ExcelImporter({ state, onImportComplete, onClose }: Exce
         return; // skip empty rows
       }
 
-      // Read numbers
       const rawDebt = mappings.debtCol ? parseFloat(record[mappings.debtCol]) : 0;
       const rawPaid = mappings.paidCol ? parseFloat(record[mappings.paidCol]) : 0;
       const debtAmount = isNaN(rawDebt) ? 0 : rawDebt;
       const paidAmount = isNaN(rawPaid) ? 0 : rawPaid;
+      const balanceAmount = debtAmount - paidAmount;
 
       const currency = mappings.currencyCol ? String(record[mappings.currencyCol] || 'د.ل').trim() : 'د.ل';
       const dateStr = mappings.dateCol ? String(record[mappings.dateCol] || '').trim() : new Date().toISOString();
-      const section = mappings.sectionCol ? String(record[mappings.sectionCol] || 'ديون العملاء').trim() : 'ديون العملاء';
-
-      // Check duplicate client in current database
-      const existingCust = state.customers.find(
-        c => c.name.trim().toLowerCase() === rawName.toLowerCase()
-      );
-
-      let targetCustId = '';
+      const section = mappings.sectionCol ? String(record[mappings.sectionCol] || '').trim() : '';
       
-      if (existingCust && duplicateMode === 'merge') {
-        // MERGE mode: append new cycle or add transactions inside existing active cycle
-        targetCustId = existingCust.id;
-        mergedCount++;
+      const noteStr = section ? `استيراد إكسل ذكي - قسم (${section})` : `استيراد إكسل ذكي`;
 
-        // Let's find if they have an active cycle
-        let activeCycle = state.cycles.find(cy => cy.customerId === targetCustId && cy.status === 'active');
+      if (targetModule === 'debts') {
+        const existingCust = newState.customers.find(
+          c => c.name.trim().toLowerCase() === rawName.toLowerCase()
+        );
+        let targetCustId = '';
         
+        if (existingCust) {
+          if (duplicateMode === 'merge') {
+            targetCustId = existingCust.id;
+            mergedCount++;
+          } else {
+            // skip mode
+            return;
+          }
+        } else {
+          const newCustId = `cust_imp_${Date.now()}_${rowIndex}`;
+          targetCustId = newCustId;
+          addedCount++;
+          newState.customers.push({
+            id: newCustId,
+            name: rawName,
+            phone: '',
+            createdAt: dateStr || new Date().toISOString()
+          });
+        }
+
+        let activeCycle = newState.cycles.find(cy => cy.customerId === targetCustId && cy.status === 'active');
         if (!activeCycle) {
-          // If no active cycle, start a new active cycle
           const newCycleId = `cycle_${targetCustId}_imported_${Date.now()}_${rowIndex}`;
           activeCycle = {
             id: newCycleId,
@@ -211,15 +253,13 @@ export default function ExcelImporter({ state, onImportComplete, onClose }: Exce
             initialBalance: 0,
             currentBalance: 0
           };
-          newCyclesList.push(activeCycle);
+          newState.cycles.push(activeCycle);
         }
 
-        // Add debt transaction if > 0
         if (debtAmount > 0) {
           lastRefNum++;
-          const txId = `tx_imp_d_${Date.now()}_${rowIndex}`;
-          newTransactionsList.push({
-            id: txId,
+          newState.debtTransactions.push({
+            id: `tx_imp_d_${Date.now()}_${rowIndex}_${lastRefNum}`,
             customerId: targetCustId,
             cycleId: activeCycle.id,
             type: 'debt',
@@ -228,18 +268,16 @@ export default function ExcelImporter({ state, onImportComplete, onClose }: Exce
             conversionRate: 1.0,
             date: dateStr || new Date().toISOString(),
             referenceNo: `TX-2026-000${lastRefNum}`,
-            note: `مستورد من ملف الإكسل - دين سابق - قسم (${section})`,
+            note: `${noteStr} - دين سابق`,
             postedToTreasury: true,
             createdAt: new Date().toISOString()
           });
         }
 
-        // Add payment transaction if > 0
         if (paidAmount > 0) {
           lastRefNum++;
-          const txId = `tx_imp_p_${Date.now()}_${rowIndex}`;
-          newTransactionsList.push({
-            id: txId,
+          newState.debtTransactions.push({
+            id: `tx_imp_p_${Date.now()}_${rowIndex}_${lastRefNum}`,
             customerId: targetCustId,
             cycleId: activeCycle.id,
             type: 'payment',
@@ -248,84 +286,173 @@ export default function ExcelImporter({ state, onImportComplete, onClose }: Exce
             conversionRate: 1.0,
             date: dateStr || new Date().toISOString(),
             referenceNo: `TX-2026-000${lastRefNum}`,
-            note: `مستورد من ملف الإكسل - سداد سابق`,
+            note: `${noteStr} - سداد دفعة`,
             postedToTreasury: true,
             createdAt: new Date().toISOString()
           });
         }
+        
+        const cyTxs = newState.debtTransactions.filter(t => t.cycleId === activeCycle!.id);
+        const currentBal = cyTxs.reduce((sum, t) => t.type === 'debt' ? sum + t.amount : sum - t.amount, 0);
+        activeCycle.currentBalance = currentBal;
+        if (currentBal <= 0) {
+          activeCycle.status = 'closed';
+          activeCycle.endDate = dateStr || new Date().toISOString();
+        }
 
-      } else {
-        // Create NEW Customer (or duplicateMode is createNew distinct)
-        const newCustId = `cust_imp_${Date.now()}_${rowIndex}`;
-        targetCustId = newCustId;
-        addedCount++;
-
-        newCustomersList.push({
-          id: newCustId,
-          name: rawName,
-          phone: '',
-          createdAt: dateStr || new Date().toISOString()
-        });
-
-        // Initialize active cycle
-        const newCycleId = `cycle_${newCustId}_imported_${Date.now()}_${rowIndex}`;
-        const activeCycle: CustomerCycle = {
-          id: newCycleId,
-          customerId: newCustId,
-          startDate: dateStr || new Date().toISOString(),
-          status: 'active',
-          initialBalance: 0,
-          currentBalance: 0
-        };
-        newCyclesList.push(activeCycle);
+      } else if (targetModule === 'companies') {
+        const existingComp = newState.companies.find(
+          c => c.name.trim().toLowerCase() === rawName.toLowerCase()
+        );
+        let targetCompId = '';
+        
+        if (existingComp) {
+          if (duplicateMode === 'merge') {
+            targetCompId = existingComp.id;
+            mergedCount++;
+            existingComp.balance += balanceAmount;
+          } else {
+            return;
+          }
+        } else {
+          targetCompId = `comp_imp_${Date.now()}_${rowIndex}`;
+          addedCount++;
+          newState.companies.push({
+            id: targetCompId,
+            name: rawName,
+            balance: balanceAmount,
+            createdAt: dateStr || new Date().toISOString()
+          });
+        }
 
         if (debtAmount > 0) {
           lastRefNum++;
-          newTransactionsList.push({
-            id: `tx_imp_d_${Date.now()}_${rowIndex}`,
-            customerId: targetCustId,
-            cycleId: activeCycle.id,
-            type: 'debt',
+          newState.companyTransactions.push({
+            id: `tx_comp_d_${Date.now()}_${rowIndex}_${lastRefNum}`,
+            companyId: targetCompId,
+            type: 'purchase_invoice',
             amount: debtAmount,
             currency: currency,
-            conversionRate: 1.0,
             date: dateStr || new Date().toISOString(),
-            referenceNo: `TX-2026-000${lastRefNum}`,
-            note: `استيراد إكسل ذكي - حساب جديد - (${section})`,
+            referenceNo: `TX-COMP-000${lastRefNum}`,
+            note: noteStr,
             postedToTreasury: true,
             createdAt: new Date().toISOString()
           });
         }
-
         if (paidAmount > 0) {
           lastRefNum++;
-          newTransactionsList.push({
-            id: `tx_imp_p_${Date.now()}_${rowIndex}`,
-            customerId: targetCustId,
-            cycleId: activeCycle.id,
+          newState.companyTransactions.push({
+            id: `tx_comp_p_${Date.now()}_${rowIndex}_${lastRefNum}`,
+            companyId: targetCompId,
             type: 'payment',
             amount: paidAmount,
             currency: currency,
-            conversionRate: 1.0,
             date: dateStr || new Date().toISOString(),
-            referenceNo: `TX-2026-000${lastRefNum}`,
-            note: `استيراد إكسل ذكي - سداد دفعة`,
+            referenceNo: `TX-COMP-000${lastRefNum}`,
+            note: noteStr,
             postedToTreasury: true,
             createdAt: new Date().toISOString()
+          });
+        }
+      } else if (targetModule === 'merchants') {
+        const existingMerch = newState.merchants.find(
+          m => m.name.trim().toLowerCase() === rawName.toLowerCase()
+        );
+        let targetMerchId = '';
+        
+        if (existingMerch) {
+          if (duplicateMode === 'merge') {
+            targetMerchId = existingMerch.id;
+            mergedCount++;
+            existingMerch.balance += balanceAmount;
+          } else {
+            return;
+          }
+        } else {
+          targetMerchId = `mer_imp_${Date.now()}_${rowIndex}`;
+          addedCount++;
+          newState.merchants.push({
+            id: targetMerchId,
+            name: rawName,
+            balance: balanceAmount,
+            previousBalance: debtAmount > 0 ? debtAmount : 0,
+            newDebt: 0,
+            paymentToday: 0,
+            createdAt: dateStr || new Date().toISOString()
+          });
+        }
+
+        if (debtAmount > 0) {
+          lastRefNum++;
+          newState.merchantTransactions.push({
+            id: `tx_mer_d_${Date.now()}_${rowIndex}_${lastRefNum}`,
+            merchantId: targetMerchId,
+            type: 'debt',
+            amount: debtAmount,
+            currency: currency,
+            date: dateStr || new Date().toISOString(),
+            referenceNo: `TX-MER-000${lastRefNum}`,
+            note: noteStr,
+            postedToTreasury: true,
+            createdAt: new Date().toISOString()
+          });
+        }
+        if (paidAmount > 0) {
+          lastRefNum++;
+          newState.merchantTransactions.push({
+            id: `tx_mer_p_${Date.now()}_${rowIndex}_${lastRefNum}`,
+            merchantId: targetMerchId,
+            type: 'payment',
+            amount: paidAmount,
+            currency: currency,
+            date: dateStr || new Date().toISOString(),
+            referenceNo: `TX-MER-000${lastRefNum}`,
+            note: noteStr,
+            postedToTreasury: true,
+            createdAt: new Date().toISOString()
+          });
+        }
+      } else if (targetModule === 'deposits') {
+        const depositAmt = debtAmount > 0 ? debtAmount : (paidAmount > 0 ? paidAmount : balanceAmount);
+        
+        // Find existing ACTIVE deposit by the same name
+        const existingDeposit = newState.trustDeposits.find(
+          d => d.customerName.trim().toLowerCase() === rawName.toLowerCase() && d.status === 'held'
+        );
+
+        if (existingDeposit) {
+          if (duplicateMode === 'merge') {
+            mergedCount++;
+            if (currency === 'ج.م') {
+              existingDeposit.amountEgp = (existingDeposit.amountEgp || 0) + depositAmt;
+            } else {
+              existingDeposit.amountLyd = (existingDeposit.amountLyd || 0) + depositAmt;
+              existingDeposit.amount = Math.max(existingDeposit.amount || 0, existingDeposit.amountLyd);
+            }
+          } else {
+            return;
+          }
+        } else {
+          addedCount++;
+          newState.trustDeposits.push({
+            id: `dep_imp_${Date.now()}_${rowIndex}`,
+            customerName: rawName,
+            amount: depositAmt,
+            amountLyd: currency === 'د.ل' ? depositAmt : 0,
+            amountEgp: currency === 'ج.م' ? depositAmt : 0,
+            currency: currency,
+            date: dateStr || new Date().toISOString(),
+            referenceNo: `TX-DEP-000${lastRefNum++}`,
+            status: 'held',
+            note: noteStr,
+            createdAt: dateStr || new Date().toISOString()
           });
         }
       }
     });
 
-    // Fire callback upwards
-    onImportComplete({
-      addedCustomersCount: addedCount,
-      mergedCustomersCount: mergedCount,
-      errorsCount: errorCount,
-      newCustomers: newCustomersList,
-      newCycles: newCyclesList,
-      newTransactions: newTransactionsList
-    });
+    onImportComplete(newState);
 
     setReport({
       addedCount,
@@ -333,6 +460,16 @@ export default function ExcelImporter({ state, onImportComplete, onClose }: Exce
       errorCount,
       show: true
     });
+
+    // Alert the user upon success and auto-close modal 
+    alert(`تم بنجاح استيراد ${addedCount + mergedCount} سجل. سيتم إغلاق النافذة تحديث البيانات...`);
+    setTimeout(() => {
+      if (document.getElementById('close-excel-modal')) {
+        document.getElementById('close-excel-modal')?.click();
+      } else if (onClose) {
+        onClose();
+      }
+    }, 1500);
   };
 
   return (
@@ -352,6 +489,35 @@ export default function ExcelImporter({ state, onImportComplete, onClose }: Exce
           <span>{err}</span>
         </div>
       ))}
+
+      {/* TARGET MODULE SELECTOR */}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 text-right">
+        <label className="block text-slate-800 font-black mb-3 text-sm bg-indigo-50 border border-indigo-100 rounded-lg p-2.5 flex items-center gap-2">
+          <HelpCircle className="w-5 h-5 text-indigo-600" />
+          <span>تسألني المنظومة: الاستيراد هذا لأي قسم في المنظومة؟</span>
+        </label>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[
+            { id: 'debts', label: 'قسم ديون العملاء', icon: '👥' },
+            { id: 'merchants', label: 'قسم ديون التجار', icon: '💼' },
+            { id: 'companies', label: 'قسم ديون الشركات', icon: '🏭' },
+            { id: 'deposits', label: 'قسم الأمانات', icon: '🔒' }
+          ].map(mod => (
+            <label key={mod.id} className={`flex items-center gap-2 p-3 border rounded-xl cursor-pointer transition ${targetModule === mod.id ? 'bg-indigo-50 border-indigo-400 text-indigo-900 shadow-sm ring-1 ring-indigo-400' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+              <input 
+                type="radio" 
+                name="targetModule" 
+                value={mod.id} 
+                checked={targetModule === mod.id} 
+                onChange={() => setTargetModule(mod.id as any)}
+                className="hidden"
+              />
+              <span className="text-lg">{mod.icon}</span>
+              <span className="font-extrabold text-xs">{mod.label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
 
       {/* STEP 1: Upload input */}
       <div className="border-2 border-dashed border-slate-200 hover:border-emerald-500 rounded-lg p-5 bg-slate-50/50 hover:bg-slate-50 text-center transition-all">
@@ -397,7 +563,12 @@ export default function ExcelImporter({ state, onImportComplete, onClose }: Exce
               <div className="space-y-2 text-xs">
                 {/* Name Mapping (Required) */}
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-600 font-semibold">اسم العميل (الاسم) *</span>
+                  <span className="text-slate-600 font-semibold">
+                    {targetModule === 'companies' ? 'اسم الشركة / المورد (الاسم) *' : 
+                     targetModule === 'merchants' ? 'اسم التاجر (الاسم) *' : 
+                     targetModule === 'deposits' ? 'اسم المودع (الاسم) *' : 
+                     'اسم العميل (الاسم) *'}
+                  </span>
                   <select
                     value={mappings.nameCol}
                     onChange={(e) => handleMapChange('nameCol', e.target.value)}
@@ -410,7 +581,9 @@ export default function ExcelImporter({ state, onImportComplete, onClose }: Exce
 
                 {/* Debt Mapping */}
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-600">القيمة الدين (المدين)</span>
+                  <span className="text-slate-600">
+                    {targetModule === 'deposits' ? 'قيمة الوديعة / الأمانة' : 'قيمة الدين (شغل جديد / الفاتورة)'}
+                  </span>
                   <select
                     value={mappings.debtCol}
                     onChange={(e) => handleMapChange('debtCol', e.target.value)}
@@ -423,7 +596,7 @@ export default function ExcelImporter({ state, onImportComplete, onClose }: Exce
 
                 {/* Paid Mapping */}
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-600">المبلغ المدفوع (المسدد)</span>
+                  <span className="text-slate-600">المبلغ المدفوع (المسدد / الواصل)</span>
                   <select
                     value={mappings.paidCol}
                     onChange={(e) => handleMapChange('paidCol', e.target.value)}
@@ -465,9 +638,9 @@ export default function ExcelImporter({ state, onImportComplete, onClose }: Exce
             {/* Strategic duplicate policy selection */}
             <div className="flex flex-col justify-between border-r pr-4">
               <div>
-                <h3 className="font-bold text-xs text-slate-800 mb-2">🛡️ سياسة كشف أسماء العملاء المكررة:</h3>
+                <h3 className="font-bold text-xs text-slate-800 mb-2">🛡️ سياسة كشف الأسماء المكررة:</h3>
                 <p className="text-[10px] text-slate-500 leading-relaxed mb-3">
-                  إذا اكتشف نظام ABDO ERP اسماً مطابقاً لعميل مدرج مسبقاً، كيف تفضل جدولة الحركات المستوردة مع هذا الحساب؟
+                  إذا اكتشف النظام اسماً مطابقاً لحساب مدرج مسبقاً، كيف تفضل جدولة الحركات المستوردة مع هذا الحساب؟
                 </p>
 
                 <div className="space-y-2 text-xs">
@@ -489,13 +662,13 @@ export default function ExcelImporter({ state, onImportComplete, onClose }: Exce
                     <input
                       type="radio"
                       name="dupMode"
-                      checked={duplicateMode === 'createNew'}
-                      onChange={() => setDuplicateMode('createNew')}
+                      checked={duplicateMode === 'skip'}
+                      onChange={() => setDuplicateMode('skip')}
                       className="text-indigo-600"
                     />
                     <div>
-                      <span className="font-bold block">إنشاء عملاء مفرزين جدد (مستقل)</span>
-                      <span className="text-[9px] text-slate-500 block">يفصل ملف العميل القديم تماماً وينشئ بطاقة زبون منفصلة تماماً.</span>
+                      <span className="font-bold block">تخطي المكرر وتجاهله (للمحافظة على الأرصدة)</span>
+                      <span className="text-[9px] text-slate-500 block">إذا وجد الاسم مسبقاً سيتجاهل الرصيد المرفق به في الملف ويمنع تكرار الاسم.</span>
                     </div>
                   </label>
                 </div>
@@ -523,7 +696,7 @@ export default function ExcelImporter({ state, onImportComplete, onClose }: Exce
                   <tr>
                     <th className="p-2 border font-mono"># رقعة</th>
                     <th className="p-2 border">الاسم (Mapped)</th>
-                    <th className="p-2 border">المدين (Mapped)</th>
+                    <th className="p-2 border">شغل جديد (Mapped)</th>
                     <th className="p-2 border">المدفوع (Mapped)</th>
                     <th className="p-2 border font-mono">العملة (Mapped)</th>
                   </tr>
@@ -558,11 +731,11 @@ export default function ExcelImporter({ state, onImportComplete, onClose }: Exce
 
           <div className="grid grid-cols-3 gap-3 text-center" dir="rtl">
             <div className="bg-white border border-emerald-100 p-2.5 rounded-lg">
-              <span className="block text-slate-500 text-[10px] mb-0.5">تمت إضافة زائن جدد</span>
+              <span className="block text-slate-500 text-[10px] mb-0.5">تمت إضافة حسابات جديدة</span>
               <span className="font-mono text-amber-700 font-bold text-lg">{report.addedCount}</span>
             </div>
             <div className="bg-white border border-emerald-100 p-2.5 rounded-lg">
-              <span className="block text-slate-500 text-[10px] mb-0.5">تم تطابق ودمج</span>
+              <span className="block text-slate-500 text-[10px] mb-0.5">تم تطابق لحسابات موجودة</span>
               <span className="font-mono text-emerald-700 font-bold text-lg">{report.mergedCount}</span>
             </div>
             <div className="bg-white border border-emerald-100 p-2.5 rounded-lg">
