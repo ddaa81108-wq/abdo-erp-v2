@@ -21,7 +21,7 @@ import {
   X,
   Menu,
 } from "lucide-react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 
 import {
   ERPState,
@@ -57,7 +57,21 @@ import FinancialReportsModule from "./components/FinancialReportsModule";
 import PdfExportModule from "./components/PdfExportModule";
 
 export default function App() {
-  const [state, setState] = useState<ERPState>(INITIAL_ERP_STATE);
+  const [state, setState] = useState<ERPState>(() => {
+    // Sync initially from LocalStorage to avoid UI jumping and ensure data availability if Firebase fails
+    const tryLocal = localStorage.getItem("ABDO_ERP_V2_DATA");
+    if (tryLocal) {
+      try {
+        const parsed = JSON.parse(tryLocal);
+        if (parsed && typeof parsed === "object") {
+          return parsed;
+        }
+      } catch (e) {
+        // Fallback
+      }
+    }
+    return INITIAL_ERP_STATE;
+  });
 
   // 👥 Active session details
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -142,202 +156,118 @@ export default function App() {
   useEffect(() => {
     let unmounted = false;
 
-    const loadData = async () => {
-      // First try localStorage for fast boot (offline support/cache)
-      const tryLocal = localStorage.getItem("ABDO_ERP_V2_DATA");
-      let loadedState = null;
-      if (tryLocal) {
-        try {
-          loadedState = JSON.parse(tryLocal);
-          if (
-            !loadedState.users ||
-            !Array.isArray(loadedState.users) ||
-            loadedState.users.length === 0
-          ) {
-            loadedState.users = INITIAL_ERP_STATE.users;
-          }
-          if (!loadedState.merchants || !Array.isArray(loadedState.merchants)) {
-            loadedState.merchants = INITIAL_ERP_STATE.merchants || [];
-          }
-          if (
-            !loadedState.merchantTransactions ||
-            !Array.isArray(loadedState.merchantTransactions)
-          ) {
-            loadedState.merchantTransactions =
-              INITIAL_ERP_STATE.merchantTransactions || [];
-          }
-          if (!loadedState.companies || !Array.isArray(loadedState.companies)) {
-            loadedState.companies = INITIAL_ERP_STATE.companies || [];
-          }
-          if (
-            !loadedState.companyTransactions ||
-            !Array.isArray(loadedState.companyTransactions)
-          ) {
-            loadedState.companyTransactions =
-              INITIAL_ERP_STATE.companyTransactions || [];
-          }
+    if (!db) {
+      console.error("Firebase DB not initialized!");
+      return;
+    }
 
-          // MIGRATION: Merge merchants into companies
+    const docRef = doc(db, "erp_system", "main_state");
+
+    const unsubscribe = onSnapshot(
+      docRef,
+      async (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data() as ERPState;
+
+          // Backfill new properties
+          if (!data.users || data.users.length === 0)
+            data.users = INITIAL_ERP_STATE.users;
+          if (!data.merchants)
+            data.merchants = INITIAL_ERP_STATE.merchants || [];
+          if (!data.merchantTransactions)
+            data.merchantTransactions =
+              INITIAL_ERP_STATE.merchantTransactions || [];
+          if (!data.companies)
+            data.companies = INITIAL_ERP_STATE.companies || [];
+          if (!data.companyTransactions)
+            data.companyTransactions =
+              INITIAL_ERP_STATE.companyTransactions || [];
+
+          // MIGRATION: Merge merchants into companies for Firebase state
           if (
-            loadedState.merchants &&
-            Array.isArray(loadedState.merchants) &&
-            loadedState.merchants.length > 0
+            data.merchants &&
+            Array.isArray(data.merchants) &&
+            data.merchants.length > 0
           ) {
-            loadedState.companies.push(
-              ...loadedState.merchants.map((m) => ({
+            data.companies.push(
+              ...data.merchants.map((m) => ({
                 ...m,
                 id: m.id.replace("mer_", "comp_"),
               })),
             );
-
             if (
-              loadedState.merchantTransactions &&
-              Array.isArray(loadedState.merchantTransactions)
+              data.merchantTransactions &&
+              Array.isArray(data.merchantTransactions)
             ) {
-              loadedState.companyTransactions.push(
-                ...loadedState.merchantTransactions.map((tx) => ({
+              data.companyTransactions.push(
+                ...data.merchantTransactions.map((tx) => ({
                   ...tx,
                   id: tx.id.replace("tx_m_", "tx_c_"),
                   companyId: tx.merchantId.replace("mer_", "comp_"),
-                  type: tx.type === "debt" ? "purchase_invoice" : tx.type,
+                  type: (tx.type === "debt" ? "purchase_invoice" : tx.type) as "payment" | "purchase_invoice",
                 })),
               );
             }
-
-            loadedState.merchants = [];
-            loadedState.merchantTransactions = [];
+            data.merchants = [];
+            data.merchantTransactions = [];
+            // Update the migrated data back to Firestore
+            await setDoc(docRef, data);
           }
 
-          if (
-            !loadedState.trustDeposits ||
-            !Array.isArray(loadedState.trustDeposits)
-          ) {
-            loadedState.trustDeposits = INITIAL_ERP_STATE.trustDeposits || [];
-          }
-          if (!loadedState.purchases || !Array.isArray(loadedState.purchases)) {
-            loadedState.purchases = INITIAL_ERP_STATE.purchases || [];
-          }
-          if (
-            !loadedState.egyptianCashRecords ||
-            !Array.isArray(loadedState.egyptianCashRecords)
-          ) {
-            loadedState.egyptianCashRecords = [];
-          }
-          if (!unmounted && loadedState.customers && loadedState.cycles) {
-            setState(loadedState);
-          }
-        } catch (e) {}
-      }
+          if (!data.trustDeposits)
+            data.trustDeposits = INITIAL_ERP_STATE.trustDeposits || [];
+          if (!data.purchases)
+            data.purchases = INITIAL_ERP_STATE.purchases || [];
+          if (!data.egyptianCashRecords) data.egyptianCashRecords = [];
 
-      // Then try Firebase
-      if (db) {
-        try {
-          const docRef = doc(db, "erp_system", "main_state");
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            const data = docSnap.data() as ERPState;
-            // Backfill new properties
-            if (!data.users || data.users.length === 0)
-              data.users = INITIAL_ERP_STATE.users;
-            if (!data.merchants)
-              data.merchants = INITIAL_ERP_STATE.merchants || [];
-            if (!data.merchantTransactions)
-              data.merchantTransactions =
-                INITIAL_ERP_STATE.merchantTransactions || [];
-            if (!data.companies)
-              data.companies = INITIAL_ERP_STATE.companies || [];
-            if (!data.companyTransactions)
-              data.companyTransactions =
-                INITIAL_ERP_STATE.companyTransactions || [];
-
-            // MIGRATION: Merge merchants into companies for Firebase state
-            if (
-              data.merchants &&
-              Array.isArray(data.merchants) &&
-              data.merchants.length > 0
-            ) {
-              data.companies.push(
-                ...data.merchants.map((m) => ({
-                  ...m,
-                  id: m.id.replace("mer_", "comp_"),
-                })),
-              );
-              if (
-                data.merchantTransactions &&
-                Array.isArray(data.merchantTransactions)
-              ) {
-                data.companyTransactions.push(
-                  ...data.merchantTransactions.map((tx) => ({
-                    ...tx,
-                    id: tx.id.replace("tx_m_", "tx_c_"),
-                    companyId: tx.merchantId.replace("mer_", "comp_"),
-                    type: tx.type === "debt" ? "purchase_invoice" : tx.type,
-                  })),
-                );
-              }
-              data.merchants = [];
-              data.merchantTransactions = [];
-            }
-
-            if (!data.trustDeposits)
-              data.trustDeposits = INITIAL_ERP_STATE.trustDeposits || [];
-            if (!data.purchases)
-              data.purchases = INITIAL_ERP_STATE.purchases || [];
-            if (!data.egyptianCashRecords) data.egyptianCashRecords = [];
-
-            if (!unmounted) {
-              setState(data);
-              // Update local cache
+          if (!unmounted) {
+            setState(data);
+            try {
               localStorage.setItem("ABDO_ERP_V2_DATA", JSON.stringify(data));
-            }
-          } else {
-            // First time setup in Firebase
-            if (!loadedState) {
-              if (!unmounted) setState(INITIAL_ERP_STATE);
-              await setDoc(docRef, INITIAL_ERP_STATE);
-              localStorage.setItem(
-                "ABDO_ERP_V2_DATA",
-                JSON.stringify(INITIAL_ERP_STATE),
-              );
-            } else {
-              await setDoc(docRef, loadedState);
+            } catch (e) {
+              console.error("Local storage sync failed", e);
             }
           }
-        } catch (err) {
-          console.error(
-            "Firebase fetch failed, falling back to local storage.",
-            err,
-          );
-          if (!loadedState && !unmounted) {
-            setState(INITIAL_ERP_STATE);
-            localStorage.setItem(
-              "ABDO_ERP_V2_DATA",
-              JSON.stringify(INITIAL_ERP_STATE),
-            );
-          }
-        }
-      } else {
-        if (!loadedState && !unmounted) {
-          setState(INITIAL_ERP_STATE);
-          localStorage.setItem(
-            "ABDO_ERP_V2_DATA",
-            JSON.stringify(INITIAL_ERP_STATE),
-          );
-        }
-      }
-    };
+        } else {
+          // First time setup in Firebase: attempt to migrate from old localStorage if exists
+          const tryLocal = localStorage.getItem("ABDO_ERP_V2_DATA");
+          let initialData = INITIAL_ERP_STATE;
 
-    loadData();
+          if (tryLocal) {
+            try {
+              const parsed = JSON.parse(tryLocal);
+              if (parsed && parsed.customers) initialData = parsed;
+            } catch (e) {}
+          }
+
+          await setDoc(docRef, initialData);
+          if (!unmounted) {
+            setState(initialData);
+          }
+        }
+      },
+      (err) => {
+        console.error("Firebase sync error:", err);
+      },
+    );
+
     return () => {
       unmounted = true;
+      unsubscribe();
     };
   }, []);
 
   const updateStateAndSync = async (newState: ERPState) => {
+    // Only save to Firebase, onSnapshot will update local state. Fast optimistic update ->
     setState(newState);
-    // Optimistically update local cache
-    localStorage.setItem("ABDO_ERP_V2_DATA", JSON.stringify(newState));
-    // Save to Firebase
+    
+    // Save to LocalStorage as a fallback
+    try {
+      localStorage.setItem("ABDO_ERP_V2_DATA", JSON.stringify(newState));
+    } catch (e) {
+      console.error("Local storage save failed", e);
+    }
+    
     if (db) {
       try {
         await setDoc(doc(db, "erp_system", "main_state"), newState);
@@ -961,7 +891,7 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="p-2 space-y-1 overflow-y-auto flex-1 text-right max-h-[calc(100vh-130px)] custom-scrollbar">
+              <div className="p-2 space-y-1.5 overflow-y-auto flex-1 text-right max-h-[calc(100vh-130px)] custom-scrollbar">
                 {[
                   {
                     id: "debts",
@@ -1037,16 +967,19 @@ export default function App() {
                           setIsSidebarOpen(false);
                         }
                       }}
-                      className={`text-right w-full text-[11px] font-extrabold px-3 py-2.5 rounded-xl transition-all cursor-pointer flex items-center justify-between group ${
+                      className={`text-right w-full text-[11px] font-extrabold px-3 py-3 rounded-lg transition-all cursor-pointer flex items-center justify-between group border relative overflow-hidden ${
                         activeTab === tab.id
-                          ? "bg-[#d4af37] text-slate-950 shadow-md scale-101 border border-[#e5c158]"
-                          : "text-slate-300 hover:text-white hover:bg-slate-900/80"
+                          ? "bg-slate-800 text-[#d4af37] border-[#d4af37]/30 shadow-md scale-[1.02]"
+                          : "text-slate-300 hover:text-white bg-slate-900 border-slate-800 hover:border-slate-700 hover:bg-slate-800"
                       }`}
                     >
-                      <span>{tab.label}</span>
+                      {activeTab === tab.id && (
+                        <div className="absolute top-0 right-0 w-1.5 h-full bg-[#d4af37]" />
+                      )}
+                      <span className="truncate pr-1">{tab.label}</span>
                       <span
-                        className={`text-[9px] transform transition-transform group-hover:translate-x-0.5 ${
-                          activeTab === tab.id ? "text-white" : "text-slate-600"
+                        className={`text-[9px] transform transition-transform group-hover:translate-x-0.5 shrink-0 ${
+                          activeTab === tab.id ? "text-[#d4af37]" : "text-slate-600"
                         }`}
                       >
                         ◀

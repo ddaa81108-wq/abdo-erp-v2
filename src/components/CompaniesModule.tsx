@@ -13,6 +13,7 @@ import {
   Check,
   FileText,
   Camera,
+  Calculator,
 } from "lucide-react";
 import { ERPState, Company, CompanyTransaction } from "../types";
 
@@ -57,6 +58,14 @@ export default function CompaniesModule({
   const [txAmount, setTxAmount] = useState("");
   const [txNote, setTxNote] = useState("");
   const [quickXCompany, setQuickXCompany] = useState<Company | null>(null);
+
+  // Bulk add state
+  const [activeTab, setActiveTab] = useState<"ledger" | "bulk">("ledger");
+  const [bulkRows, setBulkRows] = useState([
+    { id: 1, amount: "", note: "" },
+    { id: 2, amount: "", note: "" },
+    { id: 3, amount: "", note: "" },
+  ]);
 
   // States for custom confirmation dialogs to bypass standard blocked iframe confirm()
   const [showSuccessToast, setShowSuccessToast] = useState<string | null>(null);
@@ -456,7 +465,7 @@ export default function CompaniesModule({
     const rows = compTxs.map((t) => {
       let debit = 0;
       let credit = 0;
-      if (t.type === "purchase_invoice" || t.type === "debt") {
+      if (t.type === "purchase_invoice") {
         runningBalance += t.amount;
         credit = t.amount;
       } else if (t.type === "payment") {
@@ -487,7 +496,7 @@ export default function CompaniesModule({
     ];
 
     const totalPurchases = compTxs
-      .filter((t) => t.type === "purchase_invoice" || t.type === "debt")
+      .filter((t) => t.type === "purchase_invoice")
       .reduce((acc, t) => acc + t.amount, 0);
     const totalPayments = compTxs
       .filter((t) => t.type === "payment")
@@ -576,91 +585,171 @@ export default function CompaniesModule({
       })()
     : null;
 
+  // Bulk Adding Logic
+  const handleAddBulkRow = () => {
+    setBulkRows([...bulkRows, { id: Date.now(), amount: "", note: "" }]);
+  };
+
+  const handleUpdateBulkRow = (id: number, key: keyof typeof bulkRows[0], value: string) => {
+    setBulkRows(bulkRows.map((r) => (r.id === id ? { ...r, [key]: value } : r)));
+  };
+
+  const handleRemoveBulkRow = (id: number) => {
+    setBulkRows(bulkRows.filter((r) => r.id !== id));
+  };
+
+  const bulkTotal = bulkRows.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+
+  const handleSaveBulkToLedger = () => {
+    if (bulkTotal <= 0) return;
+    
+    const validRows = bulkRows.filter(r => parseFloat(r.amount) > 0);
+    const notesSummary = validRows.map(r => `${r.amount} (${r.note || 'بدون بيان'})`).join(' + ');
+    
+    const newTx: CompanyTransaction = {
+      id: "tx_c_" + Date.now().toString(),
+      companyId: selectedCompId!,
+      type: "purchase_invoice",
+      amount: bulkTotal,
+      currency: "LYD",
+      date: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      note: `دفتر التجميع: ${notesSummary}`,
+      referenceNo: "T-" + Math.floor(Math.random() * 100000),
+      postedToTreasury: true,
+    };
+
+    const newTransactions = [...(state.companyTransactions || []), newTx];
+    let updatedCompanies = state.companies;
+    updatedCompanies = state.companies.map((c) => {
+      if (c.id === selectedCompId) {
+        const debt = c.newDebt || 0;
+        return {
+          ...c,
+          newDebt: debt + bulkTotal,
+          balance: (c.previousBalance || 0) + debt + bulkTotal - (c.paymentToday || 0),
+        };
+      }
+      return c;
+    });
+
+    onUpdateState({
+      ...state,
+      companyTransactions: newTransactions,
+      companies: updatedCompanies,
+    });
+    
+    setBulkRows([
+      { id: 1, amount: "", note: "" },
+      { id: 2, amount: "", note: "" },
+      { id: 3, amount: "", note: "" },
+    ]);
+    setActiveTab("ledger");
+    setShowSuccessToast("تم ترحيل مجموع الجدول إلى حساب الشركة بنجاح.");
+  };
+
+
   return (
     <div className="space-y-4 text-right" dir="rtl">
-      {/* Metrics Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Metric 1 */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs border-l-4 border-l-amber-600 flex flex-col justify-between">
-          <div>
-            <span className="text-slate-500 font-bold text-xs block mb-1">
-              💸 إجمالي مستحقات الشركات المطلوبة
-            </span>
-            <span className="font-mono text-2xl font-black text-amber-600 block leading-tight">
-              {totalOwedToCompanies.toLocaleString()} د.ل
-            </span>
-            <p className="text-[10px] text-slate-400 mt-1">
-              * رصيد ديون فواتير التوريد النشطة. ترحيل الدفعات عن طريق عبده يغذي
-              الخزينة بالموجب فوراً.
-            </p>
+      {/* Unified grid for Metrics, Actions and Companies */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {/* Card 1: Total (Distinct White Style) */}
+        <div className="bg-white border-y border-x border-slate-200 border-t-4 border-t-amber-600 rounded-2xl p-5 shadow-xs relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+            <Landmark className="w-24 h-24 text-slate-800" />
+          </div>
+          <div className="relative z-10 flex flex-col h-full">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-slate-500 font-extrabold text-xs tracking-wide">
+                إجمالي مستحقات الشركات والتجار
+              </span>
+              <div className="bg-amber-50 p-2 rounded-xl text-amber-600">
+                <Landmark className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-auto">
+              <div className="text-3xl font-black text-amber-600 drop-shadow-sm">
+                {totalOwedToCompanies.toLocaleString()}{" "}
+                <span className="text-sm font-bold opacity-70">د.ل</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Action card & control */}
-        <div className="bg-gradient-to-tr from-indigo-50/50 to-slate-50/50 border border-slate-200 p-4 rounded-xl flex flex-col justify-between shadow-xs">
-          <div>
-            <h4 className="font-black text-sm text-slate-900 flex items-center gap-1.5">
-              <span>🏭 إدارة الموردين والذمم اليومية</span>
-            </h4>
-            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              تصفح حسابات فواتير الآجل وتنزيل دفعات السداد فورا ومراجعة القيود
-              بشكل دوري.
-            </p>
+        {/* Card 2: Actions (Distinct White Style) */}
+        <div className="bg-white border-y border-x border-slate-200 border-t-4 border-t-cyan-600 rounded-2xl p-5 shadow-xs relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+            <FileText className="w-24 h-24 text-slate-800" />
           </div>
-
-          <div className="flex gap-2 justify-end mt-3 flex-wrap">
-            <button
-              onClick={() => setShowAddCompanyModal(true)}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-[11px] px-3 py-2 rounded-lg shadow-xs cursor-pointer flex items-center gap-1 transition"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>إضافة كشف مورد جديد 🏭</span>
-            </button>
-
-            <button
-              onClick={handleOpenShareCard}
-              className="bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-[11px] px-3 py-2 rounded-lg shadow-xs cursor-pointer flex items-center gap-1 transition"
-              title="تصدير كشف حساب مورد بتصميم احترافي كبطاقة"
-            >
-              <Camera className="w-3.5 h-3.5" />
-              <span>تصدير كشف صورة 📸</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Grid of Companies (Small Cards layout - ultra compact) */}
-      {filteredCompanies.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400">
-          <Landmark className="w-12 h-12 text-slate-200 mx-auto mb-2" />
-          <h4 className="font-bold text-slate-600 text-sm mb-1">
-            لا توجد شركات توريدية نشطة مطابقة
-          </h4>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            انقر على زر "إضافة كشف مورد جديد" بالأعلى لتهيئة معاملة شريك صناعي
-            جديد أو استدعاء ملف قديم.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
-          {filteredCompanies.map((c) => {
-            const prev = c.previousBalance || 0;
-            const plus = c.newDebt || 0;
-            const minus = c.paymentToday || 0;
-            const remaining = prev + plus - minus;
-
-            return (
-              <div
-                key={c.id}
-                onClick={(e) => {
-                  if ((e.target as Element).closest("button")) {
-                    return;
-                  }
-                  setSelectedCompId(c.id);
-                }}
-                className={`bg-white border-y border-l border-slate-200 border-r-4 ${remaining > 0 ? "border-r-purple-500 hover:border-indigo-400" : "border-r-emerald-500 hover:border-emerald-400"} p-2.5 rounded-xl cursor-pointer transition-all flex items-center justify-between shadow-xs hover:shadow-xs group max-h-[58px]`}
+          <div className="relative z-10 flex flex-col h-full justify-between">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-slate-500 font-extrabold text-xs tracking-wide">
+                إجراءات سريعة
+              </span>
+              <div className="bg-cyan-50 p-2 rounded-xl text-cyan-600">
+                <FileText className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 relative z-20 mt-auto">
+              <button
+                onClick={() => setShowAddCompanyModal(true)}
+                className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 font-extrabold text-[11px] px-3 py-2.5 rounded-xl shadow-sm cursor-pointer flex items-center justify-center gap-1.5 transition-all text-center border border-slate-200"
               >
-                <div className="flex items-center gap-2 min-w-0 flex-1">
+                <Plus className="w-4 h-4 text-cyan-600" />
+                <span>إضافة كشف مورد 🏭</span>
+              </button>
+
+              <button
+                onClick={handleOpenShareCard}
+                className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 font-extrabold text-[11px] px-3 py-2.5 rounded-xl shadow-sm cursor-pointer flex items-center justify-center gap-1.5 transition-all text-center border border-slate-200"
+                title="تصدير كشف حساب مورد بتصميم احترافي كبطاقة"
+              >
+                <Camera className="w-4 h-4 text-cyan-600" />
+                <span>تصدير كشف حساب 📄</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Company Cards */}
+        {[...filteredCompanies].reverse().map((c, i) => {
+          const prev = c.previousBalance || 0;
+          const plus = c.newDebt || 0;
+          const minus = c.paymentToday || 0;
+          const remaining = prev + plus - minus;
+
+          const colors = [
+            { bg: "bg-indigo-600", border: "border-indigo-500" },
+            { bg: "bg-rose-600", border: "border-rose-500" },
+            { bg: "bg-amber-600", border: "border-amber-500" },
+            { bg: "bg-emerald-600", border: "border-emerald-500" },
+            { bg: "bg-purple-600", border: "border-purple-500" },
+            { bg: "bg-teal-600", border: "border-teal-500" },
+            { bg: "bg-fuchsia-600", border: "border-fuchsia-500" },
+          ];
+          const clr = colors[i % colors.length];
+
+          return (
+            <div
+              key={c.id}
+              onClick={(e) => {
+                if ((e.target as Element).closest("button")) return;
+                setSelectedCompId(c.id);
+              }}
+              className={`${clr.bg} ${clr.border} border rounded-2xl p-5 shadow-xl relative overflow-hidden group cursor-pointer hover:scale-101 transition-all`}
+            >
+              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                <Landmark className="w-24 h-24 text-white" />
+              </div>
+
+              <div className="relative z-10 flex flex-col h-full">
+                <div className="flex items-start justify-between mb-4">
+                  <h4
+                    className="font-extrabold text-white text-sm line-clamp-1 flex-1 text-right drop-shadow-md ml-2"
+                    title={c.name}
+                  >
+                    {c.name}
+                  </h4>
                   <button
                     type="button"
                     onClick={(e) => {
@@ -668,47 +757,52 @@ export default function CompaniesModule({
                       e.preventDefault();
                       handleExecuteQuickCompanySettle("archive_only", c);
                     }}
-                    className="bg-rose-50 hover:bg-rose-100 text-rose-600 p-1 rounded-md transition-all cursor-pointer shrink-0 hover:scale-105"
+                    className="bg-white/10 hover:bg-rose-500/80 text-white p-2 rounded-xl transition-all cursor-pointer shrink-0 backdrop-blur-md shadow-xs border border-white/10"
                     title="أرشفة ❌"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <X className="w-4 h-4" />
                   </button>
-                  <div className="min-w-0 flex-1 text-right">
-                    <h4
-                      className="font-bold text-slate-900 text-xs group-hover:text-indigo-650 transition-colors truncate"
-                      title={c.name}
-                    >
-                      {c.name}
-                    </h4>
-                  </div>
                 </div>
 
-                <div className="text-left shrink-0">
-                  {plus > 0 || minus > 0 ? (
-                    plus > 0 ? (
-                      <span className="font-mono font-extrabold text-amber-600 text-xs bg-amber-50 px-2 py-1 rounded border border-amber-100 block">
+                <div className="mt-auto">
+                  <div className="text-2xl font-black text-white drop-shadow-md">
+                    {remaining.toLocaleString()}{" "}
+                    <span className="text-[10px] font-bold opacity-70">
+                      د.ل
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                    {plus > 0 && (
+                      <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-1 rounded border border-white/10 backdrop-blur-md shadow-xs">
                         +{plus.toLocaleString()} (جديد)
                       </span>
-                    ) : (
-                      <span className="font-mono font-extrabold text-emerald-600 text-xs bg-emerald-50 px-2 py-1 rounded border border-emerald-100 block">
+                    )}
+                    {minus > 0 && (
+                      <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-1 rounded border border-white/10 backdrop-blur-md shadow-xs">
                         -{minus.toLocaleString()} (دفعة)
                       </span>
-                    )
-                  ) : remaining > 0 ? (
-                    <span className="font-mono font-extrabold text-rose-600 text-[11px] bg-rose-50/50 px-2 py-1 rounded border border-rose-100/50 block">
-                      {remaining.toLocaleString()} د.ل
-                    </span>
-                  ) : (
-                    <span className="font-sans font-extrabold text-emerald-700 text-[10px] bg-emerald-50 px-2 py-1 rounded border border-emerald-100 block">
-                      خالص ✓
-                    </span>
-                  )}
+                    )}
+                    {plus === 0 && minus === 0 && remaining === 0 && (
+                      <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-1 rounded border border-white/10 backdrop-blur-md shadow-xs">
+                        خالص ✓
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
+            </div>
+          );
+        })}
+
+        {filteredCompanies.length === 0 && (
+          <div className="bg-white/5 border border-slate-200 border-dashed rounded-2xl p-12 col-span-full text-center text-slate-400">
+            <Landmark className="w-12 h-12 text-slate-300 mx-auto mb-3 opacity-50" />
+            <h4 className="font-bold text-slate-500 text-sm mb-1">
+              لا توجد شركات مسجلة مطابقة
+            </h4>
+          </div>
+        )}
+      </div>
 
       {/* 📂 النافذة الكبيرة: تفاصيل أرشيف الشركة وحركات قيودها التاريخية */}
       {selectedCompId && selectedCompDetails && (
@@ -814,131 +908,216 @@ export default function CompaniesModule({
               </div>
             )}
 
-            {/* الأرشيف وحركات الفواتير التاريخية للمورد */}
-            <div className="flex-1 overflow-y-auto border border-slate-150 rounded-xl p-3 bg-slate-50 mb-4 min-h-[160px]">
-              <h4 className="text-xs font-extrabold text-slate-705 mb-2.5 pb-1.5 border-b border-slate-200 flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-indigo-500 font-bold" />
-                <span>
-                  أرشيف الشركة المورّدة (الفواتير التاريخية وتواريخ قيود
-                  الدفوعات والترحيل اليومي)
-                </span>
-              </h4>
+            {/* Tabs Form */}
+            <div className="flex gap-2 mb-3 border-b border-slate-200 pb-2">
+              <button
+                onClick={() => setActiveTab('ledger')}
+                className={`text-xs font-bold px-4 py-2 rounded-lg transition-colors ${activeTab === 'ledger' ? 'bg-indigo-100 text-indigo-800' : 'text-slate-500 hover:bg-slate-100'}`}
+              >
+                دفتر الأستاذ (القيود)
+              </button>
+              <button
+                onClick={() => setActiveTab('bulk')}
+                className={`text-xs font-bold px-4 py-2 rounded-lg transition-colors ${activeTab === 'bulk' ? 'bg-amber-100 text-amber-800' : 'text-slate-500 hover:bg-slate-100'}`}
+              >
+                مسودة تجميع سريع (آلة حاسبة)
+              </button>
+            </div>
 
-              {selectedCompDetails.txs.length === 0 ? (
-                <div className="text-center py-8 text-slate-404 text-xs italic">
-                  لا توجد أي معاملات سابقة مسجلة (لا شغل جديد ولا تسديد) في كشف
-                  حساب هذه الشركة بعد.
-                </div>
+            {/* الأرشيف وحركات الفواتير التاريخية للمورد */}
+            <div className="flex-1 overflow-y-auto border border-slate-150 rounded-xl p-3 bg-slate-50 mb-4 min-h-[160px] max-h-[400px]">
+              {activeTab === 'ledger' ? (
+                <>
+                  <h4 className="text-xs font-extrabold text-slate-705 mb-2.5 pb-1.5 border-b border-slate-200 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-indigo-500 font-bold" />
+                    <span>
+                      أرشيف الشركة المورّدة (الفواتير التاريخية وتواريخ قيود
+                      الدفوعات والترحيل اليومي)
+                    </span>
+                  </h4>
+
+                  {selectedCompDetails.txs.length === 0 ? (
+                    <div className="text-center py-8 text-slate-404 text-xs italic">
+                      لا توجد أي معاملات سابقة مسجلة (لا شغل جديد ولا تسديد) في كشف
+                      حساب هذه الشركة بعد.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-[11px] border-collapse text-right">
+                        <thead>
+                          <tr className="bg-slate-200 text-slate-700 font-bold border-b border-slate-300">
+                            <th className="p-2 text-right">المستند والوقت</th>
+                            <th className="p-2 text-right">الوصف (سداد / مستحق)</th>
+                            <th className="p-2 text-left">مبلغ الحركة</th>
+                            <th className="p-2 text-center">إجراء</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 bg-white font-mono">
+                          {[...selectedCompDetails.txs].reverse().map((tx) => (
+                            <tr key={tx.id} className="hover:bg-slate-50">
+                              <td className="p-2">
+                                <span className="text-slate-400 block text-[9px]">
+                                  {tx.referenceNo}
+                                </span>
+                                <span className="text-slate-600 block text-[9.5px]/none font-sans">
+                                  {new Date(tx.date).toLocaleDateString("ar-LY")}
+                                </span>
+                              </td>
+                              <td className="p-2">
+                                <span
+                                  className={`inline-block px-1.5 py-0.5 rounded text-[9.5px] font-sans font-black ${
+                                    tx.type === "purchase_invoice"
+                                      ? "bg-amber-105 text-amber-800"
+                                      : "bg-emerald-105 text-emerald-800"
+                                  }`}
+                                >
+                                  {tx.type === "purchase_invoice"
+                                    ? "🔴 مستحقات توريد (آجل)"
+                                    : "🟢 دفعة مسددة"}
+                                </span>
+                              </td>
+                              <td
+                                className={`p-2 text-left font-black ${
+                                  tx.type === "purchase_invoice"
+                                    ? "text-amber-700"
+                                    : "text-emerald-700"
+                                }`}
+                              >
+                                {tx.type === "purchase_invoice" ? "+" : "-"}
+                                {tx.amount.toLocaleString()} د.ل
+                              </td>
+                              <td className="p-2 text-center">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteTransaction(tx.id);
+                                  }}
+                                  className="text-slate-350 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 transition animate-bounce cursor-pointer"
+                                  title="حذف القيد وتراجع الرصيد"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-slate-50 border-t-2 border-slate-300 font-bold text-slate-800 text-[11px] font-mono">
+                          <tr>
+                            <td colSpan={2} className="p-2 text-right">
+                              رصيد ديون قديم:{" "}
+                              {(
+                                selectedCompDetails.comp.previousBalance || 0
+                              ).toLocaleString()}
+                            </td>
+                            <td
+                              colSpan={2}
+                              className="p-2 text-left text-amber-700"
+                            >
+                              دائن (+):{" "}
+                              {(
+                                selectedCompDetails.comp.newDebt || 0
+                              ).toLocaleString()}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td colSpan={2} className="p-2 text-right"></td>
+                            <td
+                              colSpan={2}
+                              className="p-2 text-left text-emerald-700"
+                            >
+                              مدين (-):{" "}
+                              {(
+                                selectedCompDetails.comp.paymentToday || 0
+                              ).toLocaleString()}
+                            </td>
+                          </tr>
+                          <tr className="bg-slate-100/80">
+                            <td
+                              colSpan={2}
+                              className="p-2 text-right text-xs font-black"
+                            >
+                              صافي الدين المستحق للشركة:
+                            </td>
+                            <td
+                              colSpan={2}
+                              className="p-2 text-left text-xs font-black text-rose-700"
+                            >
+                              {(
+                                selectedCompDetails.comp.balance || 0
+                              ).toLocaleString()}{" "}
+                              د.ل
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-[11px] border-collapse text-right">
-                    <thead>
-                      <tr className="bg-slate-200 text-slate-700 font-bold border-b border-slate-300">
-                        <th className="p-2 text-right">المستند والوقت</th>
-                        <th className="p-2 text-right">الوصف (سداد / مستحق)</th>
-                        <th className="p-2 text-left">مبلغ الحركة</th>
-                        <th className="p-2 text-center">إجراء</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 bg-white font-mono">
-                      {[...selectedCompDetails.txs].reverse().map((tx) => (
-                        <tr key={tx.id} className="hover:bg-slate-50">
-                          <td className="p-2">
-                            <span className="text-slate-400 block text-[9px]">
-                              {tx.referenceNo}
-                            </span>
-                            <span className="text-slate-600 block text-[9.5px]/none font-sans">
-                              {new Date(tx.date).toLocaleDateString("ar-LY")}
-                            </span>
-                          </td>
-                          <td className="p-2">
-                            <span
-                              className={`inline-block px-1.5 py-0.5 rounded text-[9.5px] font-sans font-black ${
-                                tx.type === "purchase_invoice"
-                                  ? "bg-amber-105 text-amber-800"
-                                  : "bg-emerald-105 text-emerald-800"
-                              }`}
-                            >
-                              {tx.type === "purchase_invoice"
-                                ? "🔴 مستحقات توريد (آجل)"
-                                : "🟢 دفعة مسددة"}
-                            </span>
-                          </td>
-                          <td
-                            className={`p-2 text-left font-black ${
-                              tx.type === "purchase_invoice"
-                                ? "text-amber-700"
-                                : "text-emerald-700"
-                            }`}
-                          >
-                            {tx.type === "purchase_invoice" ? "+" : "-"}
-                            {tx.amount.toLocaleString()} د.ل
-                          </td>
-                          <td className="p-2 text-center">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteTransaction(tx.id);
-                              }}
-                              className="text-slate-350 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 transition animate-bounce cursor-pointer"
-                              title="حذف القيد وتراجع الرصيد"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot className="bg-slate-50 border-t-2 border-slate-300 font-bold text-slate-800 text-[11px] font-mono">
-                      <tr>
-                        <td colSpan={2} className="p-2 text-right">
-                          رصيد ديون قديم:{" "}
-                          {(
-                            selectedCompDetails.comp.previousBalance || 0
-                          ).toLocaleString()}
-                        </td>
-                        <td
-                          colSpan={2}
-                          className="p-2 text-left text-amber-700"
-                        >
-                          دائن (+):{" "}
-                          {(
-                            selectedCompDetails.comp.newDebt || 0
-                          ).toLocaleString()}
-                        </td>
-                      </tr>
-                      <tr>
-                        <td colSpan={2} className="p-2 text-right"></td>
-                        <td
-                          colSpan={2}
-                          className="p-2 text-left text-emerald-700"
-                        >
-                          مدين (-):{" "}
-                          {(
-                            selectedCompDetails.comp.paymentToday || 0
-                          ).toLocaleString()}
-                        </td>
-                      </tr>
-                      <tr className="bg-slate-100/80">
-                        <td
-                          colSpan={2}
-                          className="p-2 text-right text-xs font-black"
-                        >
-                          صافي الدين المستحق للشركة:
-                        </td>
-                        <td
-                          colSpan={2}
-                          className="p-2 text-left text-xs font-black text-rose-700"
-                        >
-                          {(
-                            selectedCompDetails.comp.balance || 0
-                          ).toLocaleString()}{" "}
-                          د.ل
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
+                <>
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-200">
+                    <h4 className="text-xs font-extrabold text-slate-700 flex items-center gap-1.5">
+                      <Calculator className="w-4 h-4 text-amber-600" />
+                      <span>مسودة تجميع قيم للفواتير المتعددة قبل الترحيل للدفتر</span>
+                    </h4>
+                    <button onClick={handleAddBulkRow} className="bg-white border border-slate-200 text-slate-700 text-xs px-3 py-1.5 rounded shadow-sm flex items-center gap-1 hover:bg-slate-50 transition font-bold cursor-pointer">
+                      <Plus className="w-3 h-3" />
+                      إضافة حقل آخر
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-3 mb-4">
+                    {bulkRows.map((r, i) => (
+                      <div key={r.id} className="flex items-center gap-2">
+                        <div className="bg-white px-2 py-2 border border-slate-200 rounded text-[10px] text-slate-400 font-bold w-7 text-center">
+                          {i + 1}
+                        </div>
+                        <input 
+                          type="number"
+                          placeholder="المبلغ د.ل" 
+                          value={r.amount}
+                          onChange={(e) => handleUpdateBulkRow(r.id, 'amount', e.target.value)}
+                          className="w-1/3 text-right bg-white p-2.5 border border-slate-200 rounded focus:ring-2 focus:ring-amber-500 focus:outline-none text-xs font-mono font-bold"
+                        />
+                        <input 
+                          type="text"
+                          placeholder="تفاصيل الفاتورة (اختياري)" 
+                          value={r.note}
+                          onChange={(e) => handleUpdateBulkRow(r.id, 'note', e.target.value)}
+                          className="flex-1 text-right bg-white p-2.5 border border-slate-200 rounded focus:ring-2 focus:ring-amber-500 focus:outline-none text-xs"
+                        />
+                        <button onClick={() => handleRemoveBulkRow(r.id)} className="p-2.5 text-slate-400 hover:text-rose-500 bg-white border border-slate-200 rounded transition cursor-pointer">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="flex items-center justify-between bg-amber-50/50 border border-amber-100 p-4 rounded-xl">
+                    <div className="text-slate-600 text-xs font-bold w-1/3">
+                      إجمالي القيم المجمعة:
+                    </div>
+                    <div className="text-xl font-black text-amber-700 space-x-1 font-mono flex-1 text-left flex items-center justify-between" dir="ltr">
+                      <div className="text-xs text-amber-600 font-bold ml-4">
+                        (سيتم الترحيل كقيد אחד في حساب المستحقات)
+                      </div>
+                      <div>
+                        <span>{bulkTotal.toLocaleString()}</span> <span className="text-xs">د.ل</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4 flex flex-row-reverse border-t border-slate-200/60 pt-4">
+                    <button 
+                      onClick={handleSaveBulkToLedger}
+                      disabled={bulkTotal <= 0}
+                      className="bg-amber-600 disabled:bg-slate-300 disabled:cursor-not-allowed hover:bg-amber-700 text-white font-black text-xs px-6 py-3 rounded-xl shadow-xs transition cursor-pointer flex items-center gap-2"
+                    >
+                      <span>ترحيل الإجمالي ( إيداع القيد ) لدفتر المستحقات اليومية</span>
+                      <Check className="w-4 h-4" />
+                    </button>
+                  </div>
+                </>
               )}
             </div>
 

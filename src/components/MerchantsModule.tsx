@@ -24,6 +24,8 @@ interface MerchantsModuleProps {
     metrics: any,
     headers: string[],
     rows: any[][],
+    imageType?: "full" | "table" | "card",
+    footerMetrics?: any[],
   ) => void;
   searchQuery?: string;
 }
@@ -578,52 +580,65 @@ export default function MerchantsModule({
   return (
     <div className="space-y-4 text-right" dir="rtl">
       {/* Metrics Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Metric 1 */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs border-l-4 border-l-purple-600 flex flex-col justify-between">
-          <div>
-            <span className="text-slate-500 font-bold text-xs block mb-1">
-              👥 إجمالي ديون التجار المترصدة
-            </span>
-            <span className="font-mono text-2xl font-black text-purple-600 block leading-tight">
-              {totalOwedToMerchants.toLocaleString()} د.ل
-            </span>
-            <p className="text-[10px] text-slate-400 mt-1">
-              * مجموع الديون المترتربة على كشوفات حساب التجار. قيد الدفع يرحّل
-              بالموجب لخزينة عبدو.
-            </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Metric 1 (Distinct White Style) */}
+        <div className="bg-white border-y border-x border-slate-200 border-t-4 border-t-purple-600 rounded-2xl p-5 shadow-xs relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+            <Users className="w-24 h-24 text-slate-800" />
+          </div>
+          <div className="relative z-10 flex flex-col h-full">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-slate-500 font-extrabold text-xs tracking-wide">
+                إجمالي ديون التجار المترصدة
+              </span>
+              <div className="bg-purple-50 p-2 rounded-xl text-purple-600">
+                <Users className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="mt-auto">
+              <div className="text-3xl font-black text-purple-600 drop-shadow-sm">
+                {totalOwedToMerchants.toLocaleString()}{" "}
+                <span className="text-sm font-bold opacity-70">د.ل</span>
+              </div>
+              <div className="text-[10px] text-slate-400 font-bold mt-1.5 inline-block bg-slate-100 px-2 py-1 rounded-md">
+                {activeMerchants.length} كشف تاجر نشط
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Action card & control */}
-        <div className="bg-gradient-to-tr from-purple-50/50 to-slate-50/50 border border-slate-200 p-4 rounded-xl flex flex-col justify-between shadow-xs">
-          <div>
-            <h4 className="font-black text-sm text-slate-900 flex items-center gap-1.5">
-              <span>👤 إدارة قسم التجار والمعاملات اليومية</span>
-            </h4>
-            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              سجل سحوبات السلع، فواتير الشحن الآجل، أو وثق التدفقات النقدية
-              والتحصيلات في كروت متأصلة.
-            </p>
+        {/* Action card & control (Distinct White Style) */}
+        <div className="bg-white border-y border-x border-slate-200 border-t-4 border-t-fuchsia-600 rounded-2xl p-5 shadow-xs relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+            <FileText className="w-24 h-24 text-slate-800" />
           </div>
+          <div className="relative z-10 flex flex-col h-full justify-between">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-slate-500 font-extrabold text-xs tracking-wide">
+                إدارة قسم التجار
+              </span>
+              <div className="bg-fuchsia-50 p-2 rounded-xl text-fuchsia-600">
+                <FileText className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 relative z-20 mt-auto">
+              <button
+                onClick={() => setShowAddMerchantModal(true)}
+                className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 font-extrabold text-[11px] px-3 py-2.5 rounded-xl shadow-sm cursor-pointer flex items-center justify-center gap-1.5 transition-all text-center border border-slate-200"
+              >
+                <Plus className="w-4 h-4 text-fuchsia-600" />
+                <span>إضافة كشف تاجر 👤</span>
+              </button>
 
-          <div className="flex gap-2 justify-end mt-3 flex-wrap">
-            <button
-              onClick={() => setShowAddMerchantModal(true)}
-              className="bg-purple-600 hover:bg-purple-750 text-white font-extrabold text-[11px] px-3 py-2 rounded-lg shadow-xs cursor-pointer flex items-center gap-1 transition"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>إضافة كشف تاجر جديد 👤</span>
-            </button>
-
-            <button
-              onClick={handleOpenShareCard}
-              className="bg-purple-650 hover:bg-purple-750 text-white font-extrabold text-[11px] px-3 py-2 rounded-lg shadow-xs cursor-pointer flex items-center gap-1 transition"
-              title="تصدير الكشوفات للواتساب"
-            >
-              <Camera className="w-3.5 h-3.5" />
-              <span>صورة كشوفات 📸</span>
-            </button>
+              <button
+                onClick={handleOpenShareCard}
+                className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 font-extrabold text-[11px] px-3 py-2.5 rounded-xl shadow-sm cursor-pointer flex items-center justify-center gap-1.5 transition-all text-center border border-slate-200"
+                title="تصدير الكشوفات للواتساب"
+              >
+                <Camera className="w-4 h-4 text-fuchsia-600" />
+                <span>صورة كشوفات 📸</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -642,7 +657,7 @@ export default function MerchantsModule({
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
-          {filteredMerchants.map((m) => {
+          {[...filteredMerchants].reverse().map((m, i) => {
             const prev = m.previousBalance || 0;
             const plus = m.newDebt || 0;
             const minus = m.paymentToday || 0;

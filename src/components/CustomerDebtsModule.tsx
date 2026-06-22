@@ -13,6 +13,7 @@ import {
   Landmark,
   CheckSquare,
   Send,
+  FileText,
   CheckCircle2,
   MessageCircle,
 } from "lucide-react";
@@ -32,6 +33,8 @@ interface CustomerDebtsModuleProps {
     metrics: any,
     headers: string[],
     rows: any[][],
+    imageType?: "full" | "table" | "card",
+    footerMetrics?: any[],
   ) => void;
   searchQuery?: string;
 }
@@ -686,36 +689,64 @@ export default function CustomerDebtsModule({
     <div className="space-y-4 text-right" dir="rtl">
       {/* القسم العلوي: إجمالي الديون وإجراءات الزبائن */}
       {!selectionMode ? (
-        <div className="flex justify-between items-stretch gap-4">
-          {/* صندوق إجمالي الديون */}
-          <div className="bg-slate-800 border border-slate-700 p-3 rounded-xl cursor-default flex flex-col items-center justify-center shadow-xs text-center min-w-[160px] flex-1 max-w-[250px]">
-            <span className="text-slate-400 font-bold text-xs mb-1">
-              إجمالي الديون
-            </span>
-            <span className="font-mono text-lg font-black text-rose-400">
-              {totalOutstandingDebt.toLocaleString()} د.ل
-            </span>
-            <span className="text-[10px] text-slate-400 font-bold mt-1.5 bg-slate-700/50 px-2 py-1 rounded-md">
-              {activeCustomersList.length} حساب مفتوح
-            </span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* صندوق إجمالي الديون (Distinct White Style) */}
+          <div className="bg-white border-y border-x border-slate-200 border-t-4 border-t-rose-500 rounded-2xl p-5 shadow-xs relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+              <Landmark className="w-24 h-24 text-slate-800" />
+            </div>
+            <div className="relative z-10 flex flex-col h-full">
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-slate-500 font-extrabold text-xs tracking-wide">
+                  إجمالي الديون المطلوبة
+                </span>
+                <div className="bg-rose-50 p-2 rounded-xl text-rose-500">
+                  <Landmark className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="mt-auto">
+                <div className="text-3xl font-black text-rose-500 drop-shadow-sm">
+                  {totalOutstandingDebt.toLocaleString()}{" "}
+                  <span className="text-sm font-bold opacity-70">د.ل</span>
+                </div>
+                <div className="text-[10px] text-slate-400 font-bold mt-1.5 inline-block bg-slate-100 px-2 py-1 rounded-md">
+                  {activeCustomersList.length} حساب مفتوح
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* كرت إضافة عميل وتصدير للمندوب */}
-          <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-xl flex flex-col justify-center gap-2 shadow-xs min-w-[160px] flex-1 max-w-[250px]">
-            <button
-              onClick={() => setSelectionMode(true)}
-              className="w-full bg-white hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-bold text-[11px] py-2 lg:text-xs rounded-lg cursor-pointer flex justify-center items-center gap-1 transition-colors"
-            >
-              <CheckSquare className="w-4 h-4" />
-              <span>وضع الإرسال السريع</span>
-            </button>
-            <button
-              onClick={() => setShowAddCustomerModal(true)}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] py-2 lg:text-xs rounded-lg shadow-xs cursor-pointer flex justify-center items-center gap-1 transition-colors"
-            >
-              <UserPlus className="w-4 h-4" />
-              <span>عميل جديد</span>
-            </button>
+          {/* كرت إضافة عميل وتصدير للمندوب (Distinct White Style) */}
+          <div className="bg-white border-y border-x border-slate-200 border-t-4 border-t-indigo-500 rounded-2xl p-5 shadow-xs relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+              <FileText className="w-24 h-24 text-slate-800" />
+            </div>
+            <div className="relative z-10 flex flex-col h-full justify-between">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-slate-500 font-extrabold text-xs tracking-wide">
+                  إجراءات ديون العملاء
+                </span>
+                <div className="bg-indigo-50 p-2 rounded-xl text-indigo-500">
+                  <FileText className="w-4 h-4" />
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 relative z-20 mt-auto">
+                <button
+                  onClick={() => setSelectionMode(true)}
+                  className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 font-extrabold text-[11px] px-3 py-2.5 rounded-xl shadow-sm cursor-pointer flex items-center justify-center gap-1.5 transition-all text-center border border-slate-200"
+                >
+                  <CheckSquare className="w-4 h-4 text-indigo-500" />
+                  <span>وضع الإرسال السريع</span>
+                </button>
+                <button
+                  onClick={() => setShowAddCustomerModal(true)}
+                  className="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 font-extrabold text-[11px] px-3 py-2.5 rounded-xl shadow-sm cursor-pointer flex items-center justify-center gap-1.5 transition-all text-center border border-slate-200"
+                >
+                  <UserPlus className="w-4 h-4 text-indigo-500" />
+                  <span>عميل جديد</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       ) : (
@@ -764,10 +795,21 @@ export default function CustomerDebtsModule({
       )}
 
       {/* 3. شبكة كروت الزبائن */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-2">
         {/* كروت الزبائن */}
-        {activeCustomersList.map((acc) => {
+        {[...activeCustomersList].reverse().map((acc, i) => {
           const isSelected = selectedForRep.includes(acc.cust.id);
+          
+          const colors = [
+            { borderT: "border-t-indigo-500", text: "text-indigo-600", bgBadge: "bg-indigo-50" },
+            { borderT: "border-t-rose-500", text: "text-rose-600", bgBadge: "bg-rose-50" },
+            { borderT: "border-t-amber-500", text: "text-amber-600", bgBadge: "bg-amber-50" },
+            { borderT: "border-t-emerald-500", text: "text-emerald-600", bgBadge: "bg-emerald-50" },
+            { borderT: "border-t-purple-500", text: "text-purple-600", bgBadge: "bg-purple-50" },
+            { borderT: "border-t-cyan-500", text: "text-cyan-600", bgBadge: "bg-cyan-50" },
+          ];
+          const clr = colors[i % colors.length];
+
           return (
             <div
               key={acc.cust.id}
@@ -785,10 +827,10 @@ export default function CustomerDebtsModule({
                   setSelectedCustomerId(acc.cust.id);
                 }
               }}
-              className={`bg-white border text-center ${selectionMode && isSelected ? "border-emerald-500 bg-emerald-50 shadow-md ring-1 ring-emerald-500" : acc.debtBalance > 0 ? "border-rose-200 hover:border-indigo-400" : "border-emerald-200 hover:border-emerald-400"} p-2 rounded-xl cursor-pointer transition-all flex flex-col items-center justify-center shadow-xs hover:shadow-sm group min-h-[60px] relative`}
+              className={`bg-white border-x border-b border-t-4 border-slate-200 ${clr.borderT} text-center ${selectionMode && isSelected ? "ring-2 ring-emerald-500 ring-offset-1 scale-105" : "hover:scale-105 hover:shadow-md"} p-2.5 rounded-xl cursor-pointer transition-all flex flex-col items-center justify-center shadow-xs group min-h-[70px] relative`}
             >
               {selectionMode && isSelected && (
-                <div className="absolute -top-2 -right-2 bg-emerald-500 text-white rounded-full p-1 shadow-md z-10 scale-90">
+                <div className="absolute -top-2 -right-2 bg-emerald-500 text-white rounded-full p-0.5 shadow-md z-10 scale-90">
                   <CheckCircle2 className="w-4 h-4" />
                 </div>
               )}
@@ -802,7 +844,7 @@ export default function CustomerDebtsModule({
                       e.preventDefault();
                       handleQuickDelete(acc.cust.id);
                     }}
-                    className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 bg-rose-50 hover:bg-rose-100 text-rose-600 p-1 rounded-md transition-all cursor-pointer z-10"
+                    className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 bg-rose-50 hover:bg-rose-100 text-rose-600 p-1 rounded transition-all cursor-pointer z-10 border border-slate-100 shadow-xs"
                     title="أرشفة ❌"
                   >
                     <X className="w-3 h-3" />
@@ -819,7 +861,7 @@ export default function CustomerDebtsModule({
                         "_blank",
                       );
                     }}
-                    className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 p-1 rounded-md transition-all cursor-pointer z-10"
+                    className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 p-1 rounded transition-all cursor-pointer z-10 border border-slate-100 shadow-xs"
                     title="إرسال سريع للواتساب"
                   >
                     <MessageCircle className="w-3 h-3" />
@@ -827,16 +869,16 @@ export default function CustomerDebtsModule({
                 </>
               )}
 
-              <h4 className="font-bold text-slate-900 text-xs w-full px-4 group-hover:text-indigo-650 transition-colors truncate mb-1">
+              <h4 className={`font-bold ${clr.text} text-[11px] w-full px-3 truncate mb-1.5`}>
                 {acc.cust.name}
               </h4>
 
               {acc.debtBalance > 0 ? (
-                <span className="font-mono font-extrabold text-rose-600 text-xs bg-rose-50 px-2 py-0.5 rounded-md">
+                <span className={`font-mono font-black text-rose-600 text-xs ${clr.bgBadge} px-2 py-0.5 rounded border border-rose-100 shadow-xs`}>
                   {acc.debtBalance.toLocaleString()} د.ل
                 </span>
               ) : (
-                <span className="font-sans font-extrabold text-emerald-700 text-[10px] bg-emerald-50 px-2 py-0.5 rounded-md">
+                <span className={`font-sans font-black text-emerald-600 text-[10px] ${clr.bgBadge} px-2 py-0.5 rounded border border-emerald-100 shadow-xs`}>
                   مسدد ✓
                 </span>
               )}

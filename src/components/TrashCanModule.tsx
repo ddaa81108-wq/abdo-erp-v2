@@ -351,7 +351,6 @@ export default function TrashCanModule({ state, onUpdateState }: TrashCanModuleP
                           onClick={() => {
                             if (item.type === 'customer') handlePermanentDeleteCustomer(item.id);
                             else if (item.type === 'company') handlePermanentDeleteCompany(item.id);
-                            else if (item.type === 'merchant') handlePermanentDeleteMerchant(item.id);
                             else if (item.type === 'deposit') handlePermanentDeleteDeposit(item.id);
                             else if (item.type === 'transaction') handlePermanentDeleteTransaction((item as any).itemRef);
                           }}
@@ -373,7 +372,6 @@ export default function TrashCanModule({ state, onUpdateState }: TrashCanModuleP
                         onClick={() => {
                           if (item.type === 'customer') handleRestoreCustomer(item.id);
                           else if (item.type === 'company') handleRestoreCompany(item.id);
-                          else if (item.type === 'merchant') handleRestoreMerchant(item.id);
                           else if (item.type === 'deposit') handleRestoreDeposit(item.id);
                           else if (item.type === 'transaction') handleRestoreTransaction((item as any).itemRef);
                         }}
