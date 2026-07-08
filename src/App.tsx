@@ -116,6 +116,17 @@ export default function App() {
   });
 
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
+  const [showSplash, setShowSplash] = useState(false);
+
+  // 🌙 شاشة البداية - تختفي تلقائياً بعد 3.5 ثواني
+  React.useEffect(() => {
+    if (showSplash) {
+      const timer = setTimeout(() => {
+        setShowSplash(false);
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [showSplash]);
 
   const handleToggleTheme = () => {
     setIsThemeModalOpen(true);
@@ -478,6 +489,7 @@ export default function App() {
   // 👥 Session authentication helpers
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
+    setShowSplash(true);
     sessionStorage.setItem("ABDO_ERP_V2_ACTIVE_USER", JSON.stringify(user));
 
     // Auto-navigate to first available allowed module
@@ -546,6 +558,91 @@ export default function App() {
         onUpdateState={updateStateAndSync}
         onLoginSuccess={handleLoginSuccess}
       />
+    );
+  }
+
+  // 🕌 شاشة البداية - لا إله إلا الله محمد رسول الله
+  if (showSplash) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 font-sans text-right overflow-hidden" dir="rtl">
+        <div className="absolute inset-0 bg-[#0a0f1a] pointer-events-none" />
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-emerald-600/8 rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-1/3 left-1/3 w-96 h-96 bg-amber-500/5 rounded-full blur-[100px] pointer-events-none" />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.015)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.015)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
+
+        <div className="z-10 text-center px-4">
+          {/* النجمة والهلال */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.6, type: "spring" }}
+            className="mb-8"
+          >
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+              <span className="text-4xl">☪️</span>
+            </div>
+          </motion.div>
+
+          {/* لا إله إلا الله */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4, duration: 0.8, type: "spring" }}
+            className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-white mb-3 leading-relaxed tracking-wider select-none"
+          >
+            لا إله إلا الله
+          </motion.div>
+
+          {/* محمد رسول الله */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.9, duration: 0.8, type: "spring" }}
+            className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-emerald-400 mb-4 leading-relaxed tracking-wider select-none"
+          >
+            محمد رسول الله
+          </motion.div>
+
+          {/* خط فاصل */}
+          <motion.div
+            initial={{ opacity: 0, scaleX: 0 }}
+            animate={{ opacity: 1, scaleX: 1 }}
+            transition={{ delay: 1.3, duration: 0.6 }}
+            className="flex items-center justify-center gap-4 mb-8"
+          >
+            <div className="h-[1px] w-16 bg-emerald-500/30" />
+            <span className="text-emerald-500/60 text-lg">﷽</span>
+            <div className="h-[1px] w-16 bg-emerald-500/30" />
+          </motion.div>
+
+          {/* رسالة التحميل */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.6, duration: 0.5 }}
+            className="text-slate-500 text-sm font-medium tracking-wide"
+          >
+            جارٍ تحميل النظام المحاسبي...
+          </motion.div>
+
+          {/* نقاط متحركة */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.8, duration: 0.5 }}
+            className="flex items-center justify-center gap-1.5 mt-4"
+          >
+            {[0, 1, 2].map((i) => (
+              <motion.div
+                key={i}
+                animate={{ opacity: [0.3, 1, 0.3] }}
+                transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.3, ease: "easeInOut" }}
+                className="w-2 h-2 rounded-full bg-emerald-500/60"
+              />
+            ))}
+          </motion.div>
+        </div>
+      </div>
     );
   }
 
